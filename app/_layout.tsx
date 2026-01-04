@@ -43,6 +43,7 @@ function RootLayoutNav() {
       <Stack.Screen name="terms-of-service" options={{ headerShown: false }} />
       <Stack.Screen name="record-audio" options={{ headerShown: false, presentation: "fullScreenModal" }} />
       <Stack.Screen name="upload-audio" options={{ headerShown: false }} />
+      <Stack.Screen name="generated-topic" options={{ headerShown: false }} />
     </Stack>
   );
 }

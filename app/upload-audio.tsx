@@ -20,8 +20,23 @@ export default function UploadAudioScreen() {
     size: number;
     mimeType?: string;
   } | null>(null);
-  const [selectedLanguage] = useState('Auto detect');
+  const [selectedLanguage, setSelectedLanguage] = useState('Auto detect');
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const languages = [
+    'Auto detect',
+    'English',
+    'Spanish',
+    'Chinese',
+    'French',
+    'German',
+    'Japanese',
+    'Korean',
+    'Portuguese',
+    'Arabic',
+    'Hindi',
+  ];
 
   const handleUploadPress = async () => {
     try {
@@ -56,7 +71,13 @@ export default function UploadAudioScreen() {
     try {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      router.push('/create-notes');
+      router.push({
+        pathname: '/generated-topic',
+        params: {
+          fileName: selectedFile.name,
+          language: selectedLanguage,
+        },
+      });
     } catch (error) {
       console.error('Error generating topic:', error);
     } finally {
@@ -142,12 +163,45 @@ export default function UploadAudioScreen() {
             
             <TouchableOpacity 
               style={styles.languageDropdown}
+              onPress={() => setShowLanguagePicker(!showLanguagePicker)}
               activeOpacity={0.7}
             >
               <Text style={styles.robotEmoji}>🤖</Text>
               <Text style={styles.languageValue}>{selectedLanguage}</Text>
               <ChevronDown size={20} color="#374151" strokeWidth={2} />
             </TouchableOpacity>
+
+            {showLanguagePicker && (
+              <View style={styles.languagePickerDropdown}>
+                {languages.map((lang, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.languageOption,
+                      selectedLanguage === lang && styles.languageOptionSelected,
+                      index === languages.length - 1 && styles.languageOptionLast,
+                    ]}
+                    onPress={() => {
+                      setSelectedLanguage(lang);
+                      setShowLanguagePicker(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.languageOptionText,
+                        selectedLanguage === lang && styles.languageOptionTextSelected,
+                      ]}
+                    >
+                      {lang}
+                    </Text>
+                    {selectedLanguage === lang && (
+                      <Text style={styles.checkmark}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
 
           <TouchableOpacity 
@@ -261,6 +315,8 @@ const styles = StyleSheet.create({
   },
   languageSection: {
     marginTop: 24,
+    position: 'relative' as const,
+    zIndex: 1000,
   },
   languageLabelRow: {
     flexDirection: 'row',
@@ -309,5 +365,59 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.white,
+  },
+  languagePickerDropdown: {
+    position: 'absolute' as const,
+    top: 100,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
+      },
+    }),
+    zIndex: 1001,
+    maxHeight: 300,
+  },
+  languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  languageOptionLast: {
+    borderBottomWidth: 0,
+  },
+  languageOptionSelected: {
+    backgroundColor: '#ECFDF5',
+  },
+  languageOptionText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  languageOptionTextSelected: {
+    color: '#10B981',
+    fontWeight: '600' as const,
+  },
+  checkmark: {
+    fontSize: 18,
+    color: '#10B981',
+    fontWeight: 'bold' as const,
   },
 });
