@@ -170,9 +170,9 @@ export default function ProfileScreen() {
                 isLastItem={false}
               />
               <SettingsItem
-                icon={<FileText size={24} color={Colors.navDark} />}
+                icon={<FileText size={24} color={Colors.gradientBlue} />}
                 title="Terms of Service"
-                onPress={() => console.log("Terms")}
+                onPress={() => router.push("/terms-of-service")}
                 isLastItem={false}
               />
               <SettingsItem
