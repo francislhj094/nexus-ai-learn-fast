@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { X, ChevronDown } from "lucide-react-native";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,26 +14,71 @@ import { Audio } from "expo-av";
 
 export default function RecordAudioScreen() {
   const router = useRouter();
-  const [isRecording, setIsRecording] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [waveformData, setWaveformData] = useState<number[]>([]);
   
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const cleanupRecording = useCallback(async () => {
+    try {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      if (recordingRef.current) {
+        const status = await recordingRef.current.getStatusAsync();
+        if (status.isRecording || !status.isDoneRecording) {
+          await recordingRef.current.stopAndUnloadAsync();
+        }
+        recordingRef.current = null;
+      }
+    } catch (error) {
+      console.log('Cleanup error (can be ignored):', error);
+    }
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      
+      if (permission.status !== 'granted') {
+        console.error('Microphone permission denied');
+        router.back();
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      
+      recordingRef.current = newRecording;
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Failed to start recording", err);
+      router.back();
+    }
+  }, [router]);
 
   useEffect(() => {
     startRecording();
     return () => {
-      if (recording) {
-        recording.stopAndUnloadAsync();
-      }
+      cleanupRecording();
     };
-  }, [recording]);
+  }, [startRecording, cleanupRecording]);
 
   useEffect(() => {
     if (isRecording && !isPaused) {
-      Animated.loop(
+      const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
             toValue: 1.3,
@@ -46,48 +91,36 @@ export default function RecordAudioScreen() {
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      pulse.start();
+      return () => pulse.stop();
     } else {
       pulseAnim.setValue(1);
     }
   }, [isRecording, isPaused, pulseAnim]);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
     if (isRecording && !isPaused) {
-      interval = setInterval(() => {
+      timerRef.current = setInterval(() => {
         setRecordingTime((prev) => prev + 1);
         const newHeight = Math.random() * 60 + 10;
         setWaveformData((prev) => [...prev.slice(-49), newHeight]);
       }, 100);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
     return () => {
-      if (interval) {
-        clearInterval(interval);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, [isRecording, isPaused]);
 
-  const startRecording = async () => {
-    try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      
-      setRecording(newRecording);
-      setIsRecording(true);
-    } catch (err) {
-      console.error("Failed to start recording", err);
-    }
-  };
-
-  const formatTime = (seconds: number) => {
+const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
@@ -97,30 +130,64 @@ export default function RecordAudioScreen() {
   };
 
   const handleCancel = async () => {
-    if (recording) {
-      await recording.stopAndUnloadAsync();
+    try {
+      await cleanupRecording();
+      setIsRecording(false);
+      router.back();
+    } catch (error) {
+      console.log('Cancel error:', error);
+      router.back();
     }
-    setIsRecording(false);
-    router.back();
   };
 
   const handleStop = async () => {
-    if (recording) {
-      await recording.stopAndUnloadAsync();
+    try {
+      if (!recordingRef.current) {
+        router.back();
+        return;
+      }
+
+      const status = await recordingRef.current.getStatusAsync();
+      
+      if (status.isRecording || !status.isDoneRecording) {
+        await recordingRef.current.stopAndUnloadAsync();
+      }
+      
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
       setIsRecording(false);
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
+      console.log('Recording saved:', uri);
+      router.back();
+      
+    } catch (error) {
+      console.error('Stop recording error:', error);
       router.back();
     }
   };
 
   const handlePauseResume = async () => {
-    if (recording) {
+    try {
+      if (!recordingRef.current) return;
+
       if (isPaused) {
-        await recording.startAsync();
+        await recordingRef.current.startAsync();
         setIsPaused(false);
       } else {
-        await recording.pauseAsync();
+        await recordingRef.current.pauseAsync();
         setIsPaused(true);
       }
+    } catch (error) {
+      console.error('Pause/Resume error:', error);
     }
   };
 
@@ -148,7 +215,9 @@ export default function RecordAudioScreen() {
             { transform: [{ scale: pulseAnim }] },
           ]}
         />
-        <Text style={styles.recordingText}>Recording</Text>
+        <Text style={styles.recordingText}>
+          {isPaused ? 'Paused' : 'Recording'}
+        </Text>
       </View>
 
       <View style={styles.waveformContainer}>
