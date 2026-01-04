@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
@@ -22,7 +21,7 @@ export default function UploadAudioScreen() {
   } | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState('Auto detect');
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+
 
   const languages = [
     'Auto detect',
@@ -63,26 +62,17 @@ export default function UploadAudioScreen() {
     setSelectedFile(null);
   };
 
-  const handleGenerateTopic = async () => {
+  const handleGenerateTopic = () => {
     if (!selectedFile) return;
 
-    setIsGenerating(true);
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      router.push({
-        pathname: '/generated-topic',
-        params: {
-          fileName: selectedFile.name,
-          language: selectedLanguage,
-        },
-      });
-    } catch (error) {
-      console.error('Error generating topic:', error);
-    } finally {
-      setIsGenerating(false);
-    }
+    router.push({
+      pathname: '/note-generating',
+      params: {
+        audioUri: selectedFile.uri,
+        fileName: selectedFile.name,
+        language: selectedLanguage,
+      },
+    });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -210,20 +200,11 @@ export default function UploadAudioScreen() {
               !selectedFile && styles.generateButtonDisabled
             ]}
             onPress={handleGenerateTopic}
-            disabled={!selectedFile || isGenerating}
+            disabled={!selectedFile}
             activeOpacity={0.8}
           >
-            {isGenerating ? (
-              <>
-                <ActivityIndicator color="#FFFFFF" size="small" />
-                <Text style={styles.generateButtonText}>Generating...</Text>
-              </>
-            ) : (
-              <>
-                <Sparkles size={20} color="#FFFFFF" strokeWidth={2} />
-                <Text style={styles.generateButtonText}>Generate Topic</Text>
-              </>
-            )}
+            <Sparkles size={20} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.generateButtonText}>Generate Topic</Text>
           </TouchableOpacity>
         </View>
       </View>
