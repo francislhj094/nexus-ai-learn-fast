@@ -16,7 +16,7 @@ function FloatingActionButton() {
       icon: Mic,
       iconColor: "#EF4444",
       bgColor: "#FEE2E2",
-      route: "/create-notes" 
+      route: "/record-audio" 
     },
     { 
       id: "upload-audio", 
