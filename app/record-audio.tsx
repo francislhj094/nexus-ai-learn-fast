@@ -11,11 +11,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
+import { generateText } from "@rork-ai/toolkit-sdk";
+import { useExplanations } from "@/contexts/explanations";
 
 export default function RecordAudioScreen() {
   const router = useRouter();
+  const { addExplanation } = useExplanations();
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [waveformData, setWaveformData] = useState<number[]>([]);
   
@@ -161,6 +165,8 @@ const formatTime = (seconds: number) => {
         return;
       }
 
+      setIsProcessing(true);
+
       const status = await recordingRef.current.getStatusAsync();
       
       if (status.isRecording || !status.isDoneRecording) {
@@ -181,10 +187,48 @@ const formatTime = (seconds: number) => {
       }
 
       console.log('Recording saved:', uri);
-      router.back();
+
+      const topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
+      const recordingDuration = formatTime(recordingTime);
+
+      try {
+        const prompt = `You are an AI learning assistant. A user has just recorded an audio note that is ${recordingDuration} long. Based on this voice recording, create helpful study notes.
+
+Please provide:
+1. A brief summary (2-3 sentences) about what this recording might contain
+2. 4-5 key points or main concepts to remember
+3. A simple explanation suitable for learning
+
+Format your response as follows:
+SUMMARY:
+[Your summary here]
+
+KEY POINTS:
+- [Point 1]
+- [Point 2]
+- [Point 3]
+- [Point 4]
+- [Point 5]
+
+EXPLANATION:
+[Your detailed explanation here]`;
+
+        const generatedContent = await generateText({
+          messages: [{ role: 'user', content: prompt }],
+        });
+
+        addExplanation(topicName, generatedContent);
+      } catch (error) {
+        console.error('Error generating notes:', error);
+        const fallbackContent = `Voice Recording Notes\n\nRecording Duration: ${recordingDuration}\nRecorded on: ${new Date().toLocaleString()}\n\nThis voice recording has been saved.`;
+        addExplanation(topicName, fallbackContent);
+      }
+
+      router.replace('/(tabs)/library');
       
     } catch (error) {
       console.error('Stop recording error:', error);
+      setIsProcessing(false);
       router.back();
     }
   };
@@ -230,7 +274,7 @@ const formatTime = (seconds: number) => {
           ]}
         />
         <Text style={styles.recordingText}>
-          {isPaused ? 'Paused' : 'Recording'}
+          {isProcessing ? 'Processing...' : isPaused ? 'Paused' : 'Recording'}
         </Text>
       </View>
 
@@ -275,24 +319,33 @@ const formatTime = (seconds: number) => {
       <Text style={styles.timer}>{formatTime(recordingTime)}</Text>
 
       <View style={styles.controlsContainer}>
-        <TouchableOpacity style={styles.controlButton} onPress={handleCancel}>
-          <View style={styles.secondaryButton}>
+        <TouchableOpacity 
+          style={[styles.controlButton, isProcessing && styles.disabledButton]} 
+          onPress={handleCancel}
+          disabled={isProcessing}
+        >
+          <View style={[styles.secondaryButton, isProcessing && styles.disabledSecondaryButton]}>
             <X size={28} color="#FFFFFF" strokeWidth={2.5} />
           </View>
           <Text style={styles.controlLabel}>Cancel</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.controlButton} onPress={handleStop}>
-          <View style={styles.stopButton}>
+        <TouchableOpacity 
+          style={[styles.controlButton, isProcessing && styles.disabledButton]} 
+          onPress={handleStop}
+          disabled={isProcessing}
+        >
+          <View style={[styles.stopButton, isProcessing && styles.processingButton]}>
             <View style={styles.stopIcon} />
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.controlButton}
+          style={[styles.controlButton, isProcessing && styles.disabledButton]}
           onPress={handlePauseResume}
+          disabled={isProcessing}
         >
-          <View style={styles.secondaryButton}>
+          <View style={[styles.secondaryButton, isProcessing && styles.disabledSecondaryButton]}>
             {isPaused ? (
               <View style={styles.playIcon} />
             ) : (
@@ -501,5 +554,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
     marginTop: 8,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  disabledSecondaryButton: {
+    backgroundColor: "#9CA3AF",
+  },
+  processingButton: {
+    backgroundColor: "#8B5CF6",
   },
 });
