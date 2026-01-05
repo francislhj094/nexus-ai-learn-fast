@@ -8,11 +8,20 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 import { generateText } from "@rork-ai/toolkit-sdk";
 import { useExplanations } from "@/contexts/explanations";
+
+// Declare Web Speech Recognition API types
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 export default function RecordAudioScreen() {
   const router = useRouter();
@@ -22,10 +31,14 @@ export default function RecordAudioScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [waveformData, setWaveformData] = useState<number[]>([]);
+  const [transcription, setTranscription] = useState<string>("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
   
   const recordingRef = useRef<Audio.Recording | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const recognitionRef = useRef<any>(null);
+  const interimTranscriptRef = useRef<string>("");
 
   const cleanupRecording = useCallback(async () => {
     try {
@@ -41,8 +54,106 @@ export default function RecordAudioScreen() {
         }
         recordingRef.current = null;
       }
+
+      // Cleanup speech recognition
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          console.log('Recognition already stopped');
+        }
+        recognitionRef.current = null;
+      }
     } catch (error) {
       console.log('Cleanup error (can be ignored):', error);
+    }
+  }, []);
+
+  const startSpeechRecognition = useCallback(() => {
+    // Only start speech recognition on web platform
+    if (Platform.OS !== 'web') {
+      console.log('Speech recognition only available on web platform');
+      return;
+    }
+
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        console.log('Speech recognition not supported in this browser');
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        setIsTranscribing(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (finalTranscript) {
+          setTranscription(prev => prev + finalTranscript);
+        }
+        
+        interimTranscriptRef.current = interimTranscript;
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'no-speech') {
+          // Restart recognition if no speech detected
+          try {
+            recognition.start();
+          } catch {
+            console.log('Could not restart recognition');
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        setIsTranscribing(false);
+        // Restart if still recording and not paused
+        if (isRecording && !isPaused && recognitionRef.current) {
+          try {
+            recognition.start();
+          } catch {
+            console.log('Could not restart recognition');
+          }
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (error) {
+      console.error('Failed to start speech recognition:', error);
+    }
+  }, [isRecording, isPaused]);
+
+  const stopSpeechRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+        setIsTranscribing(false);
+      } catch {
+        console.log('Recognition already stopped');
+      }
     }
   }, []);
 
@@ -75,11 +186,16 @@ export default function RecordAudioScreen() {
       recordingRef.current = newRecording;
       setIsRecording(true);
       console.log('Recording started successfully');
+
+      // Start speech recognition on web
+      if (Platform.OS === 'web') {
+        setTimeout(() => startSpeechRecognition(), 500);
+      }
     } catch (err) {
       console.error("Failed to start recording:", err);
       setTimeout(() => router.back(), 100);
     }
-  }, [router]);
+  }, [router, startSpeechRecognition]);
 
   useEffect(() => {
     const initRecording = async () => {
@@ -188,39 +304,113 @@ const formatTime = (seconds: number) => {
 
       console.log('Recording saved:', uri);
 
-      const topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
+      // Stop speech recognition
+      stopSpeechRecognition();
+
       const recordingDuration = formatTime(recordingTime);
+      const hasTranscription = transcription.trim().length > 10;
+
+      console.log('Transcription available:', hasTranscription);
+      console.log('Transcription length:', transcription.length);
+      console.log('Transcription preview:', transcription.substring(0, 100));
+
+      let topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
+      let generatedContent = '';
 
       try {
-        const prompt = `You are an AI learning assistant. A user has just recorded an audio note that is ${recordingDuration} long. Based on this voice recording, create helpful study notes.
+        if (hasTranscription) {
+          // Generate notes based on actual transcription
+          const prompt = `You are an AI learning assistant. A user has just recorded an audio note and here is the transcription:
+
+"${transcription}"
+
+Based on this transcribed content, create comprehensive study notes.
 
 Please provide:
-1. A brief summary (2-3 sentences) about what this recording might contain
-2. 4-5 key points or main concepts to remember
-3. A simple explanation suitable for learning
+1. Main Topic: Identify the main topic discussed (this will be the title)
+2. Summary: Write a 2-3 sentence summary of what was discussed
+3. Key Concepts: Extract 4-6 key concepts or main points mentioned
+4. Detailed Explanation: Provide a clear, organized explanation of the content
+5. Review Questions: Create 2-3 review questions to test understanding
+6. Action Items: List any action items or tasks mentioned (if any)
+
+Format your response as follows:
+MAIN TOPIC:
+[Identified main topic]
+
+SUMMARY:
+[Your 2-3 sentence summary]
+
+KEY CONCEPTS:
+- [Concept 1]
+- [Concept 2]
+- [Concept 3]
+- [Concept 4]
+- [Concept 5]
+
+DETAILED EXPLANATION:
+[Your organized explanation with proper structure]
+
+REVIEW QUESTIONS:
+1. [Question 1]
+2. [Question 2]
+3. [Question 3]
+
+ACTION ITEMS:
+- [Item 1 if any]
+- [Item 2 if any]`;
+
+          const aiResponse = await generateText({
+            messages: [{ role: 'user', content: prompt }],
+          });
+
+          // Extract topic name from AI response
+          const topicMatch = aiResponse.match(/MAIN TOPIC:\s*([^\n]+)/);
+          if (topicMatch && topicMatch[1].trim()) {
+            topicName = topicMatch[1].trim();
+          }
+
+          generatedContent = aiResponse;
+        } else {
+          // No transcription available - generate template
+          const prompt = `You are an AI learning assistant. A user has recorded an audio note that is ${recordingDuration} long, but transcription was not available (mobile platform or unsupported browser).
+
+Create a helpful template for them to fill in their notes.
 
 Format your response as follows:
 SUMMARY:
-[Your summary here]
+[Placeholder: What did you talk about in this ${recordingDuration} recording?]
 
 KEY POINTS:
-- [Point 1]
-- [Point 2]
-- [Point 3]
-- [Point 4]
-- [Point 5]
+- [Placeholder: Main point 1]
+- [Placeholder: Main point 2]
+- [Placeholder: Main point 3]
+- [Placeholder: Main point 4]
 
 EXPLANATION:
-[Your detailed explanation here]`;
+[Placeholder: Add your detailed notes here based on what you discussed in the recording]
 
-        const generatedContent = await generateText({
-          messages: [{ role: 'user', content: prompt }],
-        });
+REVIEW QUESTIONS:
+1. [Placeholder: What are the main takeaways?]
+2. [Placeholder: What action items do you need to complete?]`;
+
+          generatedContent = await generateText({
+            messages: [{ role: 'user', content: prompt }],
+          });
+        }
 
         addExplanation(topicName, generatedContent);
       } catch (error) {
         console.error('Error generating notes:', error);
-        const fallbackContent = `Voice Recording Notes\n\nRecording Duration: ${recordingDuration}\nRecorded on: ${new Date().toLocaleString()}\n\nThis voice recording has been saved.`;
+        // Fallback content includes transcription if available
+        let fallbackContent = `Voice Recording Notes\n\nRecording Duration: ${recordingDuration}\nRecorded on: ${new Date().toLocaleString()}\n\n`;
+        
+        if (hasTranscription) {
+          fallbackContent += `TRANSCRIPTION:\n${transcription}\n\nThis voice recording has been saved with transcription.`;
+        } else {
+          fallbackContent += `This voice recording has been saved. Transcription was not available on this platform.`;
+        }
+        
         addExplanation(topicName, fallbackContent);
       }
 
@@ -240,9 +430,15 @@ EXPLANATION:
       if (isPaused) {
         await recordingRef.current.startAsync();
         setIsPaused(false);
+        // Resume speech recognition
+        if (Platform.OS === 'web') {
+          startSpeechRecognition();
+        }
       } else {
         await recordingRef.current.pauseAsync();
         setIsPaused(true);
+        // Pause speech recognition
+        stopSpeechRecognition();
       }
     } catch (error) {
       console.error('Pause/Resume error:', error);
@@ -300,6 +496,28 @@ EXPLANATION:
         <Text style={styles.raccoonIcon}>🦝</Text>
         <Text style={styles.feynmanText}>Feynman AI</Text>
       </View>
+
+      {Platform.OS === 'web' && (
+        <View style={styles.transcriptionContainer}>
+          <View style={styles.transcriptionHeader}>
+            <Text style={styles.transcriptionTitle}>Live Transcription</Text>
+            {isTranscribing && (
+              <View style={styles.transcribingBadge}>
+                <View style={styles.transcribingDot} />
+                <Text style={styles.transcribingText}>Listening...</Text>
+              </View>
+            )}
+          </View>
+          <ScrollView style={styles.transcriptionScroll} showsVerticalScrollIndicator={false}>
+            <Text style={styles.transcriptionText}>
+              {transcription || (isTranscribing ? "Start speaking..." : "Transcription will appear here")}
+              {interimTranscriptRef.current && (
+                <Text style={styles.interimText}> {interimTranscriptRef.current}</Text>
+              )}
+            </Text>
+          </ScrollView>
+        </View>
+      )}
 
       <View style={styles.spacer} />
 
@@ -563,5 +781,70 @@ const styles = StyleSheet.create({
   },
   processingButton: {
     backgroundColor: "#8B5CF6",
+  },
+  transcriptionContainer: {
+    marginHorizontal: 24,
+    marginTop: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: 200,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+      },
+    }),
+  },
+  transcriptionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  transcriptionTitle: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    color: "#6B7280",
+  },
+  transcribingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  transcribingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
+    marginRight: 6,
+  },
+  transcribingText: {
+    fontSize: 12,
+    color: "#10B981",
+    fontWeight: "500" as const,
+  },
+  transcriptionScroll: {
+    maxHeight: 140,
+  },
+  transcriptionText: {
+    fontSize: 14,
+    color: "#1F2937",
+    lineHeight: 20,
+  },
+  interimText: {
+    color: "#9CA3AF",
+    fontStyle: "italic" as const,
   },
 });
