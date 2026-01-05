@@ -213,17 +213,11 @@ Language: ${aiLanguage}`;
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const newExplanation = addExplanation(topicName, generatedContent);
+      addExplanation(topicName, generatedContent);
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      router.replace({
-        pathname: '/explanation',
-        params: {
-          explanationId: newExplanation.id,
-          topic: topicName,
-        },
-      });
+      router.replace('/(tabs)/library');
     } catch (error) {
       console.error('Error generating notes:', error);
 
@@ -245,17 +239,11 @@ Language: ${aiLanguage}`;
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const newExplanation = addExplanation(topicName, fallbackContent);
+      addExplanation(topicName, fallbackContent);
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      router.replace({
-        pathname: '/explanation',
-        params: {
-          explanationId: newExplanation.id,
-          topic: topicName,
-        },
-      });
+      router.replace('/(tabs)/library');
     }
   };
 
