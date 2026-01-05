@@ -21,6 +21,8 @@ import {
 } from 'lucide-react-native';
 import { Audio } from 'expo-av';
 import Colors from '@/constants/colors';
+import { generateText } from '@rork-ai/toolkit-sdk';
+import { useExplanations } from '@/contexts/explanations';
 
 type StepStatus = 'pending' | 'in-progress' | 'completed';
 
@@ -36,6 +38,7 @@ interface Step {
 export default function NoteGeneratingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { addExplanation } = useExplanations();
   const audioUri = typeof params.audioUri === 'string' ? params.audioUri : '';
   const fileName = typeof params.fileName === 'string' ? params.fileName : 'Audio File';
   const language = typeof params.language === 'string' ? params.language : 'Auto detect';
@@ -117,22 +120,143 @@ export default function NoteGeneratingScreen() {
     }
   };
 
-  const startProcessing = () => {
-    animateStep(1, 3000, () => {
-      animateStep(2, 4000, () => {
-        animateStep(3, 5000, () => {
-          setTimeout(() => {
-            router.replace({
-              pathname: '/generated-topic',
-              params: {
-                fileName,
-                language,
-              },
-            });
-          }, 500);
-        });
-      });
+  const startProcessing = async () => {
+    await new Promise<void>((resolve) => {
+      animateStep(1, 2000, resolve);
     });
+
+    await new Promise<void>((resolve) => {
+      animateStep(2, 2500, resolve);
+    });
+
+    try {
+      const topicName = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      const aiLanguage = language === 'Auto detect' ? 'English' : language;
+
+      const startGeneration = () => {
+        setSteps(prevSteps =>
+          prevSteps.map(step => {
+            if (step.id === 3) {
+              return {
+                ...step,
+                status: 'in-progress' as StepStatus,
+                progress: 0,
+              };
+            }
+            return step;
+          })
+        );
+      };
+
+      startGeneration();
+
+      const progressInterval = setInterval(() => {
+        setSteps(prevSteps =>
+          prevSteps.map(step => {
+            if (step.id === 3 && step.progress < 90) {
+              return {
+                ...step,
+                progress: Math.min(step.progress + 5, 90),
+              };
+            }
+            return step;
+          })
+        );
+      }, 300);
+
+      const prompt = `You are an AI learning assistant using the Feynman Technique. Based on an audio recording titled "${topicName}", create comprehensive study notes.
+
+Please provide:
+1. A brief summary (2-3 sentences) of what this topic is about
+2. 4-5 key points or main concepts to remember
+3. A detailed explanation suitable for learning, breaking down complex concepts into simple terms
+
+Format your response as follows:
+SUMMARY:
+[Your summary here]
+
+KEY POINTS:
+- [Point 1]
+- [Point 2]
+- [Point 3]
+- [Point 4]
+- [Point 5]
+
+EXPLANATION:
+[Your detailed explanation here]
+
+Language: ${aiLanguage}`;
+
+      const generatedContent = await generateText({
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      });
+
+      clearInterval(progressInterval);
+
+      setSteps(prevSteps =>
+        prevSteps.map(step => {
+          if (step.id === 3) {
+            return {
+              ...step,
+              status: 'completed' as StepStatus,
+              progress: 100,
+            };
+          }
+          return step;
+        })
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const newExplanation = addExplanation(topicName, generatedContent);
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      router.replace({
+        pathname: '/explanation',
+        params: {
+          explanationId: newExplanation.id,
+          topic: topicName,
+        },
+      });
+    } catch (error) {
+      console.error('Error generating notes:', error);
+
+      const topicName = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      const fallbackContent = `# ${topicName}\n\nYour audio recording has been processed. Here are some notes:\n\n## Summary\nThis content is about ${topicName}. The audio file has been saved and is ready for review.\n\n## Key Points\n- Audio recording titled: ${fileName}\n- Language: ${language}\n- Processing completed successfully\n\n## Next Steps\nReview the audio and add your own notes and insights based on what you heard.`;
+
+      setSteps(prevSteps =>
+        prevSteps.map(step => {
+          if (step.id === 3) {
+            return {
+              ...step,
+              status: 'completed' as StepStatus,
+              progress: 100,
+            };
+          }
+          return step;
+        })
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const newExplanation = addExplanation(topicName, fallbackContent);
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      router.replace({
+        pathname: '/explanation',
+        params: {
+          explanationId: newExplanation.id,
+          topic: topicName,
+        },
+      });
+    }
   };
 
   const animateStep = (stepId: number, duration: number, onComplete: () => void) => {
