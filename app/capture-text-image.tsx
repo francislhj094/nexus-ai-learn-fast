@@ -23,6 +23,7 @@ export default function CaptureTextImageScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showGeneratingModal, setShowGeneratingModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [selectedLanguage] = useState("Auto Detect");
 
   const handleTakePhoto = async () => {
@@ -87,7 +88,7 @@ export default function CaptureTextImageScreen() {
     setSelectedImage(null);
   };
 
-  const generateSmartContent = () => {
+  const generateSmartContent = (categoryType: string) => {
     const contentTemplates = [
       {
         category: 'Nature & Environment',
@@ -321,8 +322,17 @@ Ask questions like: What problem does this solve? Who benefits? What are uninten
       }
     ];
 
-    const randomIndex = Math.floor(Math.random() * contentTemplates.length);
-    return contentTemplates[randomIndex];
+    const categoryMap: Record<string, number> = {
+      'nature': 0,
+      'architecture': 1,
+      'food': 2,
+      'science': 3,
+      'art': 4,
+      'technology': 5,
+    };
+    
+    const index = categoryMap[categoryType] ?? 0;
+    return contentTemplates[index];
   };
 
   const handleGenerateNotes = async () => {
@@ -331,6 +341,11 @@ Ask questions like: What problem does this solve? Who benefits? What are uninten
       return;
     }
 
+    setShowCategoryModal(true);
+  };
+
+  const handleCategorySelected = async (categoryType: string) => {
+    setShowCategoryModal(false);
     setShowGeneratingModal(true);
 
     try {
@@ -343,13 +358,13 @@ Ask questions like: What problem does this solve? Who benefits? What are uninten
         year: 'numeric' 
       });
 
-      const generatedContent = generateSmartContent();
+      const generatedContent = generateSmartContent(categoryType);
 
       addExplanation(
         `${generatedContent.emoji} ${generatedContent.category} - ${formattedDate}`,
         generatedContent.content,
         {
-          imageUri: selectedImage,
+          imageUri: selectedImage ?? undefined,
           summary: generatedContent.summary,
           keyPoints: generatedContent.keyPoints,
           source: 'capture',
@@ -380,6 +395,83 @@ Ask questions like: What problem does this solve? Who benefits? What are uninten
 
   return (
     <View style={styles.container}>
+      <Modal
+        visible={showCategoryModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <Text style={styles.categoryModalTitle}>What does your image show?</Text>
+            <Text style={styles.categoryModalSubtext}>Select the category that best matches your image</Text>
+            
+            <View style={styles.categoryOptions}>
+              <TouchableOpacity 
+                style={styles.categoryOption}
+                onPress={() => handleCategorySelected('architecture')}
+              >
+                <Text style={styles.categoryEmoji}>🏛️</Text>
+                <Text style={styles.categoryLabel}>Architecture</Text>
+                <Text style={styles.categoryDesc}>Buildings, villas, interiors</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.categoryOption}
+                onPress={() => handleCategorySelected('nature')}
+              >
+                <Text style={styles.categoryEmoji}>🌿</Text>
+                <Text style={styles.categoryLabel}>Nature</Text>
+                <Text style={styles.categoryDesc}>Landscapes, plants, animals</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.categoryOption}
+                onPress={() => handleCategorySelected('food')}
+              >
+                <Text style={styles.categoryEmoji}>🍽️</Text>
+                <Text style={styles.categoryLabel}>Food</Text>
+                <Text style={styles.categoryDesc}>Cuisine, meals, recipes</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.categoryOption}
+                onPress={() => handleCategorySelected('science')}
+              >
+                <Text style={styles.categoryEmoji}>🔬</Text>
+                <Text style={styles.categoryLabel}>Science</Text>
+                <Text style={styles.categoryDesc}>Experiments, discoveries</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.categoryOption}
+                onPress={() => handleCategorySelected('art')}
+              >
+                <Text style={styles.categoryEmoji}>🎨</Text>
+                <Text style={styles.categoryLabel}>Art</Text>
+                <Text style={styles.categoryDesc}>Paintings, creative works</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.categoryOption}
+                onPress={() => handleCategorySelected('technology')}
+              >
+                <Text style={styles.categoryEmoji}>💻</Text>
+                <Text style={styles.categoryLabel}>Technology</Text>
+                <Text style={styles.categoryDesc}>Devices, gadgets, innovation</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.cancelButton}
+              onPress={() => setShowCategoryModal(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         visible={showGeneratingModal}
         transparent
@@ -799,5 +891,79 @@ const styles = StyleSheet.create({
   modalStep: {
     fontSize: 14,
     color: "#374151",
+  },
+  categoryModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    marginHorizontal: 24,
+    maxHeight: "80%",
+    width: "85%",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: "0 8px 16px rgba(0,0,0,0.3)",
+      },
+    }),
+  },
+  categoryModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  categoryModalSubtext: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  categoryOptions: {
+    gap: 12,
+  },
+  categoryOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  categoryEmoji: {
+    fontSize: 28,
+  },
+  categoryLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  categoryDesc: {
+    fontSize: 12,
+    color: "#6B7280",
+    position: "absolute",
+    right: 16,
+    bottom: 12,
+  },
+  cancelButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6B7280",
   },
 });
