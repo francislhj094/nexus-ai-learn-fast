@@ -34,7 +34,7 @@ function FloatingActionButton() {
       icon: Camera,
       iconColor: "#A855F7",
       bgColor: "#E9D5FF",
-      route: "/create-notes" 
+      route: "/capture-text-image" 
     },
     { 
       id: "youtube", 
