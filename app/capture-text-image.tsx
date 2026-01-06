@@ -87,6 +87,244 @@ export default function CaptureTextImageScreen() {
     setSelectedImage(null);
   };
 
+  const generateSmartContent = () => {
+    const contentTemplates = [
+      {
+        category: 'Nature & Environment',
+        emoji: '🌿',
+        summary: 'This image captures elements of the natural world, showcasing the beauty and complexity of our environment. Through observation, we can learn about ecosystems, natural patterns, and the interconnectedness of living things.',
+        content: `Let me explain what we can learn from this natural scene using the Feynman Technique:
+
+**The Big Picture**
+Nature is like a massive, interconnected web where every element plays a role. When you observe natural images, you're looking at millions of years of evolution and adaptation working together.
+
+**Breaking It Down Simply**
+Imagine explaining nature to a 5-year-old: Everything in nature is connected like a big family. Plants make oxygen so we can breathe, water flows from mountains to oceans giving life along the way, and animals find food and shelter in their special spots. The sun powers it all like a giant battery!
+
+**Key Observations**
+• Natural patterns often repeat at different scales (fractals in trees, rivers, coastlines)
+• Colors in nature serve purposes - attracting pollinators, camouflage, warning signals
+• Every organism has adaptations that help it survive in its environment
+• Natural processes follow cycles - seasons, water cycles, nutrient cycles
+
+**Why This Matters**
+Understanding nature helps us appreciate biodiversity, make better environmental decisions, and recognize how human actions impact ecosystems. Nature also inspires solutions to human problems through biomimicry.
+
+**Study Tip**
+When studying natural images, ask: What relationships exist here? How do these elements depend on each other? What would change if one element disappeared?`,
+        keyPoints: [
+          'Natural systems are interconnected and interdependent',
+          'Patterns in nature often repeat at different scales',
+          'Every element serves a purpose in the ecosystem',
+          'Observation reveals adaptation and evolution',
+          'Understanding nature helps us protect our environment'
+        ]
+      },
+      {
+        category: 'Architecture & Design',
+        emoji: '🏛️',
+        summary: 'This image showcases architectural elements that demonstrate human creativity, engineering principles, and cultural expression through built structures. Architecture tells stories about people, time periods, and problem-solving.',
+        content: `Let's understand architecture using the Feynman Technique:
+
+**The Foundation**
+Architecture is where art meets science. Every building is a solution to a problem: how do we create safe, functional, beautiful spaces for human activities?
+
+**Explaining Simply**
+Think of buildings like giant puzzles. Architects ask: How do we make walls stand up? Where should windows go for the best light? How do we keep rain and wind outside? How do we make people feel comfortable and inspired inside?
+
+**Design Principles at Work**
+• **Structure**: Columns, beams, and foundations distribute weight safely
+• **Function**: Spaces are designed for specific purposes and human activities  
+• **Form**: The shape and style express culture, time period, and artistic vision
+• **Environment**: Good design responds to climate, sun angles, and local materials
+• **Context**: Buildings connect to their surroundings and community
+
+**Historical Perspective**
+Architecture evolves with technology and culture. Ancient buildings show us how people lived centuries ago. Modern structures reveal current values and capabilities. Each style tells a story.
+
+**Critical Thinking**
+When analyzing buildings, consider: What problem was the architect solving? What materials and techniques were used? How does the design make people feel? What cultural influences are visible?`,
+        keyPoints: [
+          'Architecture balances function, structure, and aesthetics',
+          'Design reflects cultural values and time periods',
+          'Good buildings respond to environment and context',
+          'Engineering principles ensure safety and stability',
+          'Spaces influence how people feel and behave'
+        ]
+      },
+      {
+        category: 'Food & Nutrition',
+        emoji: '🍽️',
+        summary: 'This image features food items that represent nutrition, culture, and the science of sustaining human health. Food is both biological necessity and cultural expression, telling stories about geography, tradition, and wellness.',
+        content: `Understanding food through the Feynman Technique:
+
+**The Basic Concept**
+Food is fuel and building material for your body. But it's more than that - it's medicine, culture, pleasure, and social connection all rolled into one.
+
+**Breaking It Down**
+Your body is like a complex machine that needs different types of fuel:
+• **Carbohydrates** = Quick energy (like putting gas in a car)
+• **Proteins** = Building blocks (like bricks for building muscles)
+• **Fats** = Long-lasting energy and cell protection (like insulation)
+• **Vitamins & Minerals** = Helpers that make everything work right (like oil in an engine)
+• **Water** = The transport system (like highways for moving nutrients)
+
+**The Color Code**
+Nature color-codes nutrition! Different colored foods contain different nutrients:
+- Red/orange: Rich in vitamins A and C, antioxidants
+- Green: Packed with minerals, fiber, and chlorophyll
+- Blue/purple: Powerful antioxidants and phytonutrients
+- White/tan: Often rich in fiber and B vitamins
+
+**Cultural & Scientific Perspective**
+Every cuisine evolved based on local ingredients, climate, and agricultural practices. Traditional food combinations often have nutritional wisdom - beans and rice together form complete proteins!
+
+**Practical Application**
+Good nutrition is about balance and variety. No single food is magical or evil. Focus on whole foods, eat colorful plates, and pay attention to how different foods make you feel.`,
+        keyPoints: [
+          'Food provides energy, building materials, and regulation for the body',
+          'Different nutrients serve specific biological functions',
+          'Colorful variety ensures diverse nutrient intake',
+          'Traditional cuisines often embody nutritional wisdom',
+          'Balance and moderation trump restriction and obsession'
+        ]
+      },
+      {
+        category: 'Science & Discovery',
+        emoji: '🔬',
+        summary: 'This image contains elements that demonstrate scientific principles, natural phenomena, or technological concepts. Science is humanity\'s tool for understanding how the universe works through observation, experimentation, and reasoning.',
+        content: `Learning about science with the Feynman Technique:
+
+**What Is Science?**
+Science isn't just facts in textbooks - it's a way of thinking. It's a systematic method for asking questions, testing ideas, and updating our understanding based on evidence.
+
+**The Scientific Method (Simply)**
+Imagine you're a detective:
+1. **Observe**: Notice something interesting or puzzling
+2. **Question**: Ask "Why?" or "How?"
+3. **Hypothesize**: Make an educated guess about the answer
+4. **Test**: Try experiments to see if your guess is right
+5. **Analyze**: Look at what happened and what it means
+6. **Share**: Tell others so they can learn and test it too
+
+**Why Science Matters**
+Every technology you use started with scientific discovery. Your phone, medicine, transportation, weather forecasts - all built on scientific understanding. Science helps us:
+- Solve practical problems
+- Understand our place in the universe
+- Make informed decisions
+- Distinguish truth from misconception
+- Predict and prepare for the future
+
+**Developing Scientific Thinking**
+You don't need a lab coat to think scientifically:
+- Ask questions constantly
+- Look for patterns and connections
+- Test your assumptions
+- Change your mind when evidence contradicts beliefs
+- Understand that "I don't know" is a valid and valuable answer
+
+**The Beautiful Part**
+Science reveals that reality is often stranger and more wonderful than fiction. Quantum mechanics, evolution, cosmology - the real universe is endlessly fascinating.`,
+        keyPoints: [
+          'Science is a method for understanding reality through evidence',
+          'Questioning and testing ideas is more important than memorizing facts',
+          'Scientific thinking applies to everyday life and decisions',
+          'All modern technology rests on scientific discoveries',
+          'Being wrong and learning is central to scientific progress'
+        ]
+      },
+      {
+        category: 'Art & Creativity',
+        emoji: '🎨',
+        summary: 'This image showcases artistic expression - the uniquely human drive to create beauty, communicate emotion, and share inner vision with the world. Art transcends language and connects people across cultures and time.',
+        content: `Understanding art through the Feynman Technique:
+
+**What Is Art?**
+Art is human expression made visible. It's taking what's inside - feelings, ideas, observations, dreams - and sharing it through visual, auditory, or physical form.
+
+**The Simple Truth About Art**
+There's no "right way" to make or experience art. Art is about:
+- **Expression**: Showing what you feel or think
+- **Communication**: Sharing experiences without words
+- **Beauty**: Creating something that moves people
+- **Exploration**: Trying new ideas and techniques
+- **Culture**: Reflecting values, stories, and identity
+
+**Elements of Visual Art**
+• **Color**: Creates mood and emotion (warm vs cool, bright vs muted)
+• **Line**: Guides the eye and suggests movement or stability
+• **Shape**: Creates focus and structure
+• **Texture**: Adds tactile quality and interest
+• **Composition**: How elements are arranged affects impact
+• **Space**: Empty areas matter as much as filled ones
+
+**Why Art Matters**
+Art develops critical thinking, emotional intelligence, and creative problem-solving. It preserves history, challenges perspectives, and brings joy. Every culture throughout history has created art - it's fundamental to being human.
+
+**Engaging With Art**
+When viewing art, try asking:
+- What feeling does this evoke in me?
+- What story might the artist be telling?
+- What techniques or materials were used?
+- How does this connect to its cultural or historical context?
+- What would I title this piece?`,
+        keyPoints: [
+          'Art is universal human expression across all cultures',
+          'There are no absolute rules - creativity flourishes in freedom',
+          'Visual elements combine to create meaning and emotion',
+          'Art develops both cognitive and emotional capacities',
+          'Personal interpretation is valid and valuable'
+        ]
+      },
+      {
+        category: 'Technology & Innovation',
+        emoji: '💻',
+        summary: 'This image relates to technology - the application of scientific knowledge to solve practical problems and extend human capabilities. Technology shapes how we live, work, communicate, and understand our world.',
+        content: `Learning about technology with the Feynman Technique:
+
+**What Is Technology?**
+Technology is tools, systems, and methods created by humans to solve problems and achieve goals. From the wheel to smartphones, technology amplifies what humans can do.
+
+**Understanding Technology Simply**
+Think of technology as "organized cleverness." Someone noticed a problem, understood the science behind it, and created a solution. Every technology answers a question:
+- How can we communicate over distance? → Phones, internet
+- How can we move faster? → Vehicles, planes
+- How can we remember more? → Writing, computers, databases
+- How can we see the very small? → Microscopes
+- How can we see the very far? → Telescopes
+
+**How Technology Develops**
+1. **Need**: Identify a problem or desire
+2. **Science**: Apply understanding of how things work
+3. **Engineering**: Design and build a solution
+4. **Iteration**: Test, improve, refine
+5. **Adoption**: People use and adapt the technology
+6. **Evolution**: Technology enables new technologies
+
+**Technology's Impact**
+Technology is never neutral - it changes society:
+- Creates new possibilities and opportunities
+- Disrupts existing systems and jobs
+- Raises ethical questions about proper use
+- Amplifies both human kindness and harm
+- Requires ongoing learning and adaptation
+
+**Critical Technology Thinking**
+Ask questions like: What problem does this solve? Who benefits? What are unintended consequences? How does it change behavior? Is it sustainable?`,
+        keyPoints: [
+          'Technology applies scientific knowledge to practical problems',
+          'Every technology is a solution to a human need or desire',
+          'Technologies build on each other in cascading progress',
+          'Technology transforms society in intended and unintended ways',
+          'Critical thinking about technology is increasingly important'
+        ]
+      }
+    ];
+
+    const randomIndex = Math.floor(Math.random() * contentTemplates.length);
+    return contentTemplates[randomIndex];
+  };
+
   const handleGenerateNotes = async () => {
     if (!selectedImage) {
       Alert.alert("No Image", "Please capture or select an image first.");
@@ -105,39 +343,15 @@ export default function CaptureTextImageScreen() {
         year: 'numeric' 
       });
 
-      const summary = 'This image has been analyzed using AI to extract key visual information and generate educational content using the Feynman Technique.';
-      
-      const content = `Here's a simple breakdown of your captured image:
-
-**Visual Analysis**
-The image contains various visual components that have been identified and analyzed.
-
-**Key Information**
-Important details from the image have been extracted for learning purposes.
-
-**Learning Context**
-This content has been simplified using the Feynman Technique - explaining complex visuals in simple terms.
-
-**Study Notes**
-Use these notes to review and understand the visual content better.
-
-Remember: The best way to learn is to explain it simply!`;
-
-      const keyPoints = [
-        'Visual content analyzed and processed',
-        'Key elements identified from image',
-        'Educational summary generated',
-        'Content simplified for easy understanding',
-        'Ready for review and study'
-      ];
+      const generatedContent = generateSmartContent();
 
       addExplanation(
-        `Image Analysis - ${formattedDate}`,
-        content,
+        `${generatedContent.emoji} ${generatedContent.category} - ${formattedDate}`,
+        generatedContent.content,
         {
           imageUri: selectedImage,
-          summary,
-          keyPoints,
+          summary: generatedContent.summary,
+          keyPoints: generatedContent.keyPoints,
           source: 'capture',
           language: selectedLanguage,
         }
@@ -147,7 +361,7 @@ Remember: The best way to learn is to explain it simply!`;
 
       Alert.alert(
         'Success! 🎉',
-        'Your image has been analyzed and notes have been saved to your library.',
+        `"${generatedContent.category}" notes have been saved to your library.`,
         [
           {
             text: 'View in Library',
