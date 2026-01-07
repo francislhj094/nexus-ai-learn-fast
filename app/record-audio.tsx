@@ -13,6 +13,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 
+const STT_API_URL = 'https://toolkit.rork.com/stt/transcribe/';
+
 // Declare Web Speech Recognition API types
 declare global {
   interface Window {
@@ -36,6 +38,8 @@ export default function RecordAudioScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const recognitionRef = useRef<any>(null);
   const interimTranscriptRef = useRef<string>("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const cleanupRecording = useCallback(async () => {
     try {
@@ -60,6 +64,19 @@ export default function RecordAudioScreen() {
           console.log('Recognition already stopped');
         }
         recognitionRef.current = null;
+      }
+
+      // Cleanup MediaRecorder
+      if (mediaRecorderRef.current) {
+        try {
+          if (mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+          }
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        } catch {
+          console.log('MediaRecorder cleanup error');
+        }
+        mediaRecorderRef.current = null;
       }
     } catch (error) {
       console.log('Cleanup error (can be ignored):', error);
@@ -211,8 +228,35 @@ export default function RecordAudioScreen() {
       setIsRecording(true);
       console.log('Recording started successfully');
 
-      // Start speech recognition on web
+      // Start Web MediaRecorder for better STT API compatibility
       if (Platform.OS === 'web') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              sampleRate: 44100,
+            } 
+          });
+          const mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus',
+          });
+          
+          audioChunksRef.current = [];
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunksRef.current.push(event.data);
+            }
+          };
+          
+          mediaRecorder.start(1000); // Collect data every second
+          mediaRecorderRef.current = mediaRecorder;
+          console.log('Web MediaRecorder started for STT');
+        } catch (mediaError) {
+          console.log('MediaRecorder not available:', mediaError);
+        }
+        
         setTimeout(() => startSpeechRecognition(), 500);
       }
     } catch (err) {
@@ -334,12 +378,57 @@ const formatTime = (seconds: number) => {
       await new Promise(resolve => setTimeout(resolve, 300));
 
       const recordingDuration = formatTime(recordingTime);
-      const webTranscript = transcription.trim();
+      let webTranscript = transcription.trim();
       
       console.log('=== Navigating to note-generating ===' );
       console.log('URI:', uri);
       console.log('Duration:', recordingDuration);
-      console.log('Web transcript:', webTranscript);
+      console.log('Web transcript from Speech Recognition:', webTranscript);
+
+      // Stop MediaRecorder and get final audio
+      if (Platform.OS === 'web' && mediaRecorderRef.current) {
+        try {
+          if (mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+          }
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        } catch {
+          console.log('MediaRecorder stop error');
+        }
+      }
+
+      // On web, also try to transcribe using the STT API for better accuracy
+      if (Platform.OS === 'web' && audioChunksRef.current.length > 0) {
+        try {
+          console.log('=== Attempting STT API transcription on web ===');
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          console.log('Audio blob size:', audioBlob.size);
+          
+          if (audioBlob.size > 0) {
+            const formData = new FormData();
+            const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
+            formData.append('audio', audioFile);
+            
+            const sttResponse = await fetch(STT_API_URL, {
+              method: 'POST',
+              body: formData,
+            });
+            
+            if (sttResponse.ok) {
+              const result = await sttResponse.json();
+              console.log('=== STT API Result (web) ===');
+              console.log('Transcribed text:', result.text);
+              
+              if (result.text && result.text.trim().length > webTranscript.length) {
+                webTranscript = result.text.trim();
+                console.log('Using STT API transcription:', webTranscript);
+              }
+            }
+          }
+        } catch (sttError) {
+          console.log('STT API error on web (using Speech Recognition fallback):', sttError);
+        }
+      }
 
       router.replace({
         pathname: '/note-generating',
