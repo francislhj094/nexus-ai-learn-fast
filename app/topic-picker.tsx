@@ -106,7 +106,7 @@ export default function TopicPickerScreen() {
 
   const handleSelectSubtopic = (subtopicTitle: string) => {
     router.push({
-      pathname: "/note-generating",
+      pathname: "/character-picker",
       params: { 
         topic: subtopicTitle,
         parentTopic: topic,
@@ -116,7 +116,7 @@ export default function TopicPickerScreen() {
 
   const handleSelectAllTopics = () => {
     router.push({
-      pathname: "/note-generating",
+      pathname: "/character-picker",
       params: { 
         topic: topic,
         parentTopic: topic,
