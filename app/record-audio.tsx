@@ -12,10 +12,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
-import { generateText } from "@rork-ai/toolkit-sdk";
-import { useExplanations } from "@/contexts/explanations";
-
-const STT_API_URL = "https://toolkit.rork.com/stt/transcribe/";
 
 // Declare Web Speech Recognition API types
 declare global {
@@ -27,7 +23,6 @@ declare global {
 
 export default function RecordAudioScreen() {
   const router = useRouter();
-  const { addExplanation } = useExplanations();
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -304,80 +299,6 @@ const formatTime = (seconds: number) => {
     }
   };
 
-  const transcribeAudioNative = async (uri: string): Promise<string> => {
-    try {
-      console.log('=== Starting Transcription ===' );
-      console.log('Audio URI:', uri);
-      console.log('Platform:', Platform.OS);
-      
-      if (!uri) {
-        console.error('No URI provided for transcription');
-        return '';
-      }
-      
-      const formData = new FormData();
-      
-      if (Platform.OS === 'web') {
-        console.log('Fetching blob from web URI...');
-        try {
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          console.log('Blob size:', blob.size, 'type:', blob.type);
-          
-          const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
-          formData.append('audio', audioFile);
-        } catch (blobError) {
-          console.error('Failed to fetch blob:', blobError);
-          return '';
-        }
-      } else {
-        const uriParts = uri.split('.');
-        const fileType = uriParts[uriParts.length - 1];
-        console.log('File type detected:', fileType);
-        
-        const audioFile = {
-          uri: uri,
-          name: `recording.${fileType}`,
-          type: fileType === 'wav' ? 'audio/wav' : fileType === 'm4a' ? 'audio/m4a' : `audio/${fileType}`,
-        } as any;
-        
-        console.log('Audio file object:', JSON.stringify(audioFile));
-        formData.append('audio', audioFile);
-      }
-      
-      console.log('Sending audio to STT API:', STT_API_URL);
-      const sttResponse = await fetch(STT_API_URL, {
-        method: 'POST',
-        body: formData,
-      });
-      
-      console.log('STT API response status:', sttResponse.status);
-      
-      if (!sttResponse.ok) {
-        const errorText = await sttResponse.text();
-        console.error('STT API error response:', errorText);
-        throw new Error(`STT API error: ${sttResponse.status} - ${errorText}`);
-      }
-      
-      const result = await sttResponse.json();
-      console.log('=== STT API Result ===' );
-      console.log('Full result:', JSON.stringify(result));
-      console.log('Transcribed text:', result.text);
-      console.log('Detected language:', result.language);
-      
-      if (result.text && result.text.trim().length > 0) {
-        return result.text.trim();
-      }
-      
-      console.log('No text in result, returning empty string');
-      return '';
-    } catch (error) {
-      console.error('=== Transcription Error ===' );
-      console.error('Error details:', error);
-      return '';
-    }
-  };
-
   const handleStop = async () => {
     try {
       if (!recordingRef.current) {
@@ -408,150 +329,28 @@ const formatTime = (seconds: number) => {
 
       console.log('Recording saved:', uri);
 
-      // Stop speech recognition and wait a moment for final results
       stopSpeechRecognition();
       
-      // Small delay to ensure final transcription is captured
       await new Promise(resolve => setTimeout(resolve, 300));
 
       const recordingDuration = formatTime(recordingTime);
+      const webTranscript = transcription.trim();
       
-      // For native platforms, use STT API to transcribe
-      let finalTranscription = transcription.trim();
-      
-      console.log('=== Processing Transcription ===' );
-      console.log('Platform:', Platform.OS);
-      console.log('URI available:', !!uri);
-      console.log('Web transcription length:', transcription.length);
-      
-      if (uri) {
-        console.log('Attempting STT API transcription...');
-        try {
-          const nativeTranscription = await transcribeAudioNative(uri);
-          console.log('Native transcription result:', nativeTranscription);
-          console.log('Native transcription length:', nativeTranscription.length);
-          
-          if (nativeTranscription && nativeTranscription.length > 0) {
-            finalTranscription = nativeTranscription;
-            console.log('Using native transcription');
-          } else if (Platform.OS !== 'web') {
-            console.log('Native transcription empty, no web fallback available');
-          }
-        } catch (sttError) {
-          console.error('STT API failed:', sttError);
-        }
-      }
-      
-      const hasTranscription = finalTranscription.length > 2;
+      console.log('=== Navigating to note-generating ===' );
+      console.log('URI:', uri);
+      console.log('Duration:', recordingDuration);
+      console.log('Web transcript:', webTranscript);
 
-      console.log('=== Final Transcription Status ===' );
-      console.log('Has transcription:', hasTranscription);
-      console.log('Final transcription length:', finalTranscription.length);
-      console.log('Final transcription:', finalTranscription);
-
-      let topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
-      let generatedContent = '';
-
-      try {
-        if (hasTranscription) {
-          // Generate notes based on actual transcription
-          const prompt = `You are an AI learning assistant. A user has just recorded an audio note and here is the transcription:
-
-"${finalTranscription}"
-
-Based on this transcribed content, create comprehensive study notes.
-
-Please provide:
-1. Main Topic: Identify the main topic discussed (this will be the title)
-2. Summary: Write a 2-3 sentence summary of what was discussed
-3. Key Concepts: Extract 4-6 key concepts or main points mentioned
-4. Detailed Explanation: Provide a clear, organized explanation of the content
-5. Review Questions: Create 2-3 review questions to test understanding
-6. Action Items: List any action items or tasks mentioned (if any)
-
-Format your response as follows:
-MAIN TOPIC:
-[Identified main topic]
-
-SUMMARY:
-[Your 2-3 sentence summary]
-
-KEY CONCEPTS:
-- [Concept 1]
-- [Concept 2]
-- [Concept 3]
-- [Concept 4]
-- [Concept 5]
-
-DETAILED EXPLANATION:
-[Your organized explanation with proper structure]
-
-REVIEW QUESTIONS:
-1. [Question 1]
-2. [Question 2]
-3. [Question 3]
-
-ACTION ITEMS:
-- [Item 1 if any]
-- [Item 2 if any]`;
-
-          const aiResponse = await generateText({
-            messages: [{ role: 'user', content: prompt }],
-          });
-
-          // Extract topic name from AI response
-          const topicMatch = aiResponse.match(/MAIN TOPIC:\s*([^\n]+)/);
-          if (topicMatch && topicMatch[1].trim()) {
-            topicName = topicMatch[1].trim();
-          }
-
-          generatedContent = aiResponse;
-        } else {
-          // No transcription available - generate helpful starter content
-          topicName = `Voice Note - ${new Date().toLocaleDateString()}`;
-          generatedContent = `📝 Voice Recording Notes
-
-Recording Duration: ${recordingDuration}
-Recorded on: ${new Date().toLocaleString()}
-
----
-
-✏️ WHAT I DISCUSSED:
-Add your notes about what you talked about in this recording.
-
-📌 KEY POINTS:
-• Point 1
-• Point 2
-• Point 3
-
-💡 IMPORTANT DETAILS:
-Add any important details, examples, or definitions mentioned.
-
-✅ ACTION ITEMS:
-• Task 1
-• Task 2
-
----
-
-Tip: You can edit this note anytime to add more details from your recording.`;
-        }
-
-        addExplanation(topicName, generatedContent);
-      } catch (error) {
-        console.error('Error generating notes:', error);
-        // Fallback content includes transcription if available
-        let fallbackContent = `Voice Recording Notes\n\nRecording Duration: ${recordingDuration}\nRecorded on: ${new Date().toLocaleString()}\n\n`;
-        
-        if (hasTranscription) {
-          fallbackContent += `TRANSCRIPTION:\n${finalTranscription}\n\nThis voice recording has been saved with transcription.`;
-        } else {
-          fallbackContent += `This voice recording has been saved. Transcription was not available on this platform.`;
-        }
-        
-        addExplanation(topicName, fallbackContent);
-      }
-
-      router.replace('/(tabs)/library');
+      router.replace({
+        pathname: '/note-generating',
+        params: {
+          audioUri: uri || '',
+          fileName: `Voice Recording ${new Date().toLocaleDateString()}`,
+          language: 'Auto detect',
+          duration: recordingDuration,
+          webTranscript: webTranscript,
+        },
+      });
       
     } catch (error) {
       console.error('Stop recording error:', error);

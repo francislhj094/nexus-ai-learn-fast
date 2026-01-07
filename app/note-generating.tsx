@@ -24,7 +24,9 @@ import Colors from '@/constants/colors';
 import { generateText } from '@rork-ai/toolkit-sdk';
 import { useExplanations } from '@/contexts/explanations';
 
-type StepStatus = 'pending' | 'in-progress' | 'completed';
+const STT_API_URL = 'https://toolkit.rork.com/stt/transcribe/';
+
+type StepStatus = 'pending' | 'in-progress' | 'completed' | 'error';
 
 interface Step {
   id: number;
@@ -40,8 +42,10 @@ export default function NoteGeneratingScreen() {
   const params = useLocalSearchParams();
   const { addExplanation } = useExplanations();
   const audioUri = typeof params.audioUri === 'string' ? params.audioUri : '';
-  const fileName = typeof params.fileName === 'string' ? params.fileName : 'Audio File';
+  const fileName = typeof params.fileName === 'string' ? params.fileName : 'Voice Recording';
   const language = typeof params.language === 'string' ? params.language : 'Auto detect';
+  const duration = typeof params.duration === 'string' ? params.duration : '00:00:00';
+  const webTranscript = typeof params.webTranscript === 'string' ? params.webTranscript : '';
 
   const [steps, setSteps] = useState<Step[]>([
     {
@@ -73,7 +77,8 @@ export default function NoteGeneratingScreen() {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
     loadAudio();
@@ -111,7 +116,7 @@ export default function NoteGeneratingScreen() {
   const onPlaybackStatusUpdate = (status: any) => {
     if (status.isLoaded) {
       setPosition(status.positionMillis);
-      setDuration(status.durationMillis || 0);
+      setAudioDuration(status.durationMillis || 0);
       setIsPlaying(status.isPlaying);
 
       if (status.didJustFinish) {
@@ -120,92 +125,235 @@ export default function NoteGeneratingScreen() {
     }
   };
 
+  const transcribeAudio = async (): Promise<string> => {
+    console.log('=== Starting Transcription ===');
+    console.log('Audio URI:', audioUri);
+    console.log('Platform:', Platform.OS);
+    console.log('Web transcript available:', webTranscript.length > 0);
+    
+    if (!audioUri) {
+      console.log('No audio URI, using web transcript if available');
+      return webTranscript;
+    }
+    
+    try {
+      const formData = new FormData();
+      
+      if (Platform.OS === 'web') {
+        console.log('Fetching blob from web URI...');
+        const response = await fetch(audioUri);
+        const blob = await response.blob();
+        console.log('Blob size:', blob.size, 'type:', blob.type);
+        
+        const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+        formData.append('audio', audioFile);
+      } else {
+        const uriParts = audioUri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        console.log('File type detected:', fileType);
+        
+        const audioFile = {
+          uri: audioUri,
+          name: `recording.${fileType}`,
+          type: fileType === 'wav' ? 'audio/wav' : fileType === 'm4a' ? 'audio/m4a' : `audio/${fileType}`,
+        } as any;
+        
+        console.log('Audio file object:', JSON.stringify(audioFile));
+        formData.append('audio', audioFile);
+      }
+      
+      console.log('Sending audio to STT API:', STT_API_URL);
+      const sttResponse = await fetch(STT_API_URL, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      console.log('STT API response status:', sttResponse.status);
+      
+      if (!sttResponse.ok) {
+        const errorText = await sttResponse.text();
+        console.error('STT API error response:', errorText);
+        throw new Error(`STT API error: ${sttResponse.status}`);
+      }
+      
+      const result = await sttResponse.json();
+      console.log('=== STT API Result ===');
+      console.log('Transcribed text:', result.text);
+      console.log('Detected language:', result.language);
+      
+      if (result.text && result.text.trim().length > 0) {
+        return result.text.trim();
+      }
+      
+      console.log('STT returned empty, falling back to web transcript');
+      return webTranscript;
+    } catch (error) {
+      console.error('=== Transcription Error ===', error);
+      return webTranscript;
+    }
+  };
+
   const startProcessing = async () => {
+    let transcription = '';
+    
+    // Step 1: Upload (simulated progress)
     await new Promise<void>((resolve) => {
-      animateStep(1, 2000, resolve);
+      animateStep(1, 1500, resolve);
     });
 
-    await new Promise<void>((resolve) => {
-      animateStep(2, 2500, resolve);
-    });
+    // Step 2: Transcribe
+    setSteps(prevSteps =>
+      prevSteps.map(step => {
+        if (step.id === 2) {
+          return { ...step, status: 'in-progress' as StepStatus, progress: 0 };
+        }
+        return step;
+      })
+    );
+
+    const transcribeProgressInterval = setInterval(() => {
+      setSteps(prevSteps =>
+        prevSteps.map(step => {
+          if (step.id === 2 && step.progress < 80) {
+            return { ...step, progress: Math.min(step.progress + 10, 80) };
+          }
+          return step;
+        })
+      );
+    }, 200);
 
     try {
-      const topicName = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-      const aiLanguage = language === 'Auto detect' ? 'English' : language;
+      transcription = await transcribeAudio();
+      console.log('=== Final Transcription ===');
+      console.log('Transcription:', transcription);
+      console.log('Length:', transcription.length);
+    } catch (error) {
+      console.error('Transcription failed:', error);
+    }
 
-      const startGeneration = () => {
-        setSteps(prevSteps =>
-          prevSteps.map(step => {
-            if (step.id === 3) {
-              return {
-                ...step,
-                status: 'in-progress' as StepStatus,
-                progress: 0,
-              };
-            }
-            return step;
-          })
-        );
-      };
+    clearInterval(transcribeProgressInterval);
 
-      startGeneration();
+    setSteps(prevSteps =>
+      prevSteps.map(step => {
+        if (step.id === 2) {
+          return { ...step, status: 'completed' as StepStatus, progress: 100 };
+        }
+        return step;
+      })
+    );
 
-      const progressInterval = setInterval(() => {
-        setSteps(prevSteps =>
-          prevSteps.map(step => {
-            if (step.id === 3 && step.progress < 90) {
-              return {
-                ...step,
-                progress: Math.min(step.progress + 5, 90),
-              };
-            }
-            return step;
-          })
-        );
-      }, 300);
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-      const prompt = `You are an AI learning assistant using the Feynman Technique. Based on an audio recording titled "${topicName}", create comprehensive study notes.
+    // Step 3: Generate notes
+    setSteps(prevSteps =>
+      prevSteps.map(step => {
+        if (step.id === 3) {
+          return { ...step, status: 'in-progress' as StepStatus, progress: 0 };
+        }
+        return step;
+      })
+    );
+
+    const progressInterval = setInterval(() => {
+      setSteps(prevSteps =>
+        prevSteps.map(step => {
+          if (step.id === 3 && step.progress < 90) {
+            return { ...step, progress: Math.min(step.progress + 5, 90) };
+          }
+          return step;
+        })
+      );
+    }, 300);
+
+    try {
+      const hasTranscription = transcription.length > 2;
+      let topicName = fileName;
+      let generatedContent = '';
+
+      if (hasTranscription) {
+        const aiLanguage = language === 'Auto detect' ? 'English' : language;
+        
+        const prompt = `You are an AI learning assistant. A user has just recorded an audio note and here is the transcription:
+
+"${transcription}"
+
+Based on this transcribed content, create comprehensive study notes.
 
 Please provide:
-1. A brief summary (2-3 sentences) of what this topic is about
-2. 4-5 key points or main concepts to remember
-3. A detailed explanation suitable for learning, breaking down complex concepts into simple terms
+1. Main Topic: Identify the main topic discussed (this will be the title)
+2. Summary: Write a 2-3 sentence summary of what was discussed
+3. Key Concepts: Extract 4-6 key concepts or main points mentioned
+4. Detailed Explanation: Provide a clear, organized explanation of the content
+5. Review Questions: Create 2-3 review questions to test understanding
 
 Format your response as follows:
+MAIN TOPIC:
+[Identified main topic]
+
 SUMMARY:
-[Your summary here]
+[Your 2-3 sentence summary]
 
-KEY POINTS:
-- [Point 1]
-- [Point 2]
-- [Point 3]
-- [Point 4]
-- [Point 5]
+KEY CONCEPTS:
+- [Concept 1]
+- [Concept 2]
+- [Concept 3]
+- [Concept 4]
+- [Concept 5]
 
-EXPLANATION:
-[Your detailed explanation here]
+DETAILED EXPLANATION:
+[Your organized explanation with proper structure]
+
+REVIEW QUESTIONS:
+1. [Question 1]
+2. [Question 2]
+3. [Question 3]
 
 Language: ${aiLanguage}`;
 
-      const generatedContent = await generateText({
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      });
+        console.log('Generating notes with AI...');
+        generatedContent = await generateText({
+          messages: [{ role: 'user', content: prompt }],
+        });
+
+        const topicMatch = generatedContent.match(/MAIN TOPIC:\s*([^\n]+)/);
+        if (topicMatch && topicMatch[1].trim()) {
+          topicName = topicMatch[1].trim();
+        }
+      } else {
+        topicName = `Voice Note - ${new Date().toLocaleDateString()}`;
+        generatedContent = `📝 Voice Recording Notes
+
+Recording Duration: ${duration}
+Recorded on: ${new Date().toLocaleString()}
+
+---
+
+✏️ WHAT I DISCUSSED:
+Add your notes about what you talked about in this recording.
+
+📌 KEY POINTS:
+• Point 1
+• Point 2
+• Point 3
+
+💡 IMPORTANT DETAILS:
+Add any important details, examples, or definitions mentioned.
+
+✅ ACTION ITEMS:
+• Task 1
+• Task 2
+
+---
+
+Tip: You can edit this note anytime to add more details from your recording.`;
+      }
 
       clearInterval(progressInterval);
 
       setSteps(prevSteps =>
         prevSteps.map(step => {
           if (step.id === 3) {
-            return {
-              ...step,
-              status: 'completed' as StepStatus,
-              progress: 100,
-            };
+            return { ...step, status: 'completed' as StepStatus, progress: 100 };
           }
           return step;
         })
@@ -214,24 +362,23 @@ Language: ${aiLanguage}`;
       await new Promise(resolve => setTimeout(resolve, 500));
 
       addExplanation(topicName, generatedContent);
+      setIsComplete(true);
 
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      router.replace('/(tabs)/library');
     } catch (error) {
       console.error('Error generating notes:', error);
+      clearInterval(progressInterval);
 
-      const topicName = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-      const fallbackContent = `# ${topicName}\n\nYour audio recording has been processed. Here are some notes:\n\n## Summary\nThis content is about ${topicName}. The audio file has been saved and is ready for review.\n\n## Key Points\n- Audio recording titled: ${fileName}\n- Language: ${language}\n- Processing completed successfully\n\n## Next Steps\nReview the audio and add your own notes and insights based on what you heard.`;
+      const fallbackContent = `Voice Recording Notes
+
+Recording Duration: ${duration}
+Recorded on: ${new Date().toLocaleString()}
+
+${transcription.length > 2 ? `TRANSCRIPTION:\n${transcription}\n\n` : ''}This voice recording has been saved.`;
 
       setSteps(prevSteps =>
         prevSteps.map(step => {
           if (step.id === 3) {
-            return {
-              ...step,
-              status: 'completed' as StepStatus,
-              progress: 100,
-            };
+            return { ...step, status: 'completed' as StepStatus, progress: 100 };
           }
           return step;
         })
@@ -239,19 +386,16 @@ Language: ${aiLanguage}`;
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      addExplanation(topicName, fallbackContent);
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      router.replace('/(tabs)/library');
+      addExplanation(fileName, fallbackContent);
+      setIsComplete(true);
     }
   };
 
-  const animateStep = (stepId: number, duration: number, onComplete: () => void) => {
+  const animateStep = (stepId: number, animDuration: number, onComplete: () => void) => {
     const startTime = Date.now();
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const progress = Math.min((elapsed / duration) * 100, 100);
+      const progress = Math.min((elapsed / animDuration) * 100, 100);
 
       setSteps(prevSteps =>
         prevSteps.map(step => {
@@ -260,12 +404,6 @@ Language: ${aiLanguage}`;
               ...step,
               status: progress >= 100 ? 'completed' : 'in-progress',
               progress: Math.round(progress),
-            };
-          }
-          if (step.id === stepId + 1 && progress >= 100) {
-            return {
-              ...step,
-              status: 'in-progress',
             };
           }
           return step;
@@ -297,7 +435,7 @@ Language: ${aiLanguage}`;
     if (!sound) return;
 
     try {
-      const newPosition = Math.min(position + 10000, duration);
+      const newPosition = Math.min(position + 10000, audioDuration);
       await sound.setPositionAsync(newPosition);
     } catch (error) {
       console.error('Error skipping forward:', error);
@@ -329,6 +467,9 @@ Language: ${aiLanguage}`;
     if (status === 'in-progress') {
       return [styles.stepIconContainer, styles.stepIconContainerInProgress];
     }
+    if (status === 'error') {
+      return [styles.stepIconContainer, styles.stepIconContainerError];
+    }
     return [styles.stepIconContainer, styles.stepIconContainerPending];
   };
 
@@ -339,7 +480,14 @@ Language: ${aiLanguage}`;
     if (status === 'in-progress') {
       return styles.progressBarInProgress;
     }
+    if (status === 'error') {
+      return styles.progressBarError;
+    }
     return styles.progressBarPending;
+  };
+
+  const handleGoToNotes = () => {
+    router.replace('/(tabs)/library');
   };
 
   return (
@@ -371,7 +519,7 @@ Language: ${aiLanguage}`;
                   <Text style={styles.stepSubtitle}>{step.subtitle}</Text>
 
                   <View style={styles.progressBarContainer}>
-                    <View style={[styles.progressBarBackground]}>
+                    <View style={styles.progressBarBackground}>
                       <View
                         style={[
                           getProgressBarStyle(step.status),
@@ -407,7 +555,7 @@ Language: ${aiLanguage}`;
         <View style={styles.audioPlayerCard}>
           <View style={styles.timeRow}>
             <Text style={styles.timeText}>{formatTime(position)}</Text>
-            <Text style={styles.timeText}>{formatTime(duration)}</Text>
+            <Text style={styles.timeText}>{formatTime(audioDuration)}</Text>
           </View>
 
           <View style={styles.seekBarContainer}>
@@ -415,7 +563,7 @@ Language: ${aiLanguage}`;
               <View
                 style={[
                   styles.seekBarFill,
-                  { width: `${duration > 0 ? (position / duration) * 100 : 0}%` },
+                  { width: `${audioDuration > 0 ? (position / audioDuration) * 100 : 0}%` },
                 ]}
               />
             </View>
@@ -463,12 +611,15 @@ Language: ${aiLanguage}`;
         </View>
 
         <TouchableOpacity
-          style={styles.goToNotesButton}
-          onPress={() => router.push('/(tabs)/library')}
+          style={[styles.goToNotesButton, !isComplete && styles.goToNotesButtonDisabled]}
+          onPress={handleGoToNotes}
           activeOpacity={0.8}
+          disabled={!isComplete}
         >
           <Sparkles size={20} color="#FFFFFF" strokeWidth={2} />
-          <Text style={styles.goToNotesButtonText}>Go to My Notes</Text>
+          <Text style={styles.goToNotesButtonText}>
+            {isComplete ? 'Go to My Notes' : 'Processing...'}
+          </Text>
         </TouchableOpacity>
       </View>
     </>
@@ -539,6 +690,9 @@ const styles = StyleSheet.create({
   stepIconContainerCompleted: {
     backgroundColor: '#10B981',
   },
+  stepIconContainerError: {
+    backgroundColor: '#EF4444',
+  },
   stepTextContainer: {
     flex: 1,
     paddingTop: 4,
@@ -580,6 +734,11 @@ const styles = StyleSheet.create({
   progressBarCompleted: {
     height: '100%',
     backgroundColor: '#10B981',
+    borderRadius: 4,
+  },
+  progressBarError: {
+    height: '100%',
+    backgroundColor: '#EF4444',
     borderRadius: 4,
   },
   progressText: {
@@ -684,6 +843,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
+  },
+  goToNotesButtonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   goToNotesButtonText: {
     fontSize: 16,
