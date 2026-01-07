@@ -424,7 +424,7 @@ Keep your response short (2-3 sentences max). Be encouraging and sweet.`;
 
               {!characterResponse && !sessionComplete && (
                 <Text style={styles.explainText}>
-                  Explain me the {topic} {topicEmoji}, like I&apos;m {characterAge} years old!
+                  Explain me the {topic} {topicEmoji}, like I{"'"}m {characterAge} years old!
                 </Text>
               )}
 

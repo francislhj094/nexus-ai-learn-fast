@@ -50,6 +50,7 @@ function RootLayoutNav() {
       <Stack.Screen name="generated-topic" options={{ headerShown: false }} />
       <Stack.Screen name="capture-text-image" options={{ headerShown: false }} />
       <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="learning-session" options={{ headerShown: false }} />
     </Stack>
   );
 }
