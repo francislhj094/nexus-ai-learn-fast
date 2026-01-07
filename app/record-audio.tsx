@@ -304,15 +304,19 @@ const formatTime = (seconds: number) => {
 
       console.log('Recording saved:', uri);
 
-      // Stop speech recognition
+      // Stop speech recognition and wait a moment for final results
       stopSpeechRecognition();
+      
+      // Small delay to ensure final transcription is captured
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       const recordingDuration = formatTime(recordingTime);
-      const hasTranscription = transcription.trim().length > 10;
+      const finalTranscription = transcription.trim();
+      const hasTranscription = finalTranscription.length > 5;
 
       console.log('Transcription available:', hasTranscription);
-      console.log('Transcription length:', transcription.length);
-      console.log('Transcription preview:', transcription.substring(0, 100));
+      console.log('Transcription length:', finalTranscription.length);
+      console.log('Transcription preview:', finalTranscription.substring(0, 100));
 
       let topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
       let generatedContent = '';
@@ -322,7 +326,7 @@ const formatTime = (seconds: number) => {
           // Generate notes based on actual transcription
           const prompt = `You are an AI learning assistant. A user has just recorded an audio note and here is the transcription:
 
-"${transcription}"
+"${finalTranscription}"
 
 Based on this transcribed content, create comprehensive study notes.
 
@@ -372,31 +376,33 @@ ACTION ITEMS:
 
           generatedContent = aiResponse;
         } else {
-          // No transcription available - generate template
-          const prompt = `You are an AI learning assistant. A user has recorded an audio note that is ${recordingDuration} long, but transcription was not available (mobile platform or unsupported browser).
+          // No transcription available - generate helpful starter content
+          topicName = `Voice Note - ${new Date().toLocaleDateString()}`;
+          generatedContent = `📝 Voice Recording Notes
 
-Create a helpful template for them to fill in their notes.
+Recording Duration: ${recordingDuration}
+Recorded on: ${new Date().toLocaleString()}
 
-Format your response as follows:
-SUMMARY:
-[Placeholder: What did you talk about in this ${recordingDuration} recording?]
+---
 
-KEY POINTS:
-- [Placeholder: Main point 1]
-- [Placeholder: Main point 2]
-- [Placeholder: Main point 3]
-- [Placeholder: Main point 4]
+✏️ WHAT I DISCUSSED:
+Add your notes about what you talked about in this recording.
 
-EXPLANATION:
-[Placeholder: Add your detailed notes here based on what you discussed in the recording]
+📌 KEY POINTS:
+• Point 1
+• Point 2
+• Point 3
 
-REVIEW QUESTIONS:
-1. [Placeholder: What are the main takeaways?]
-2. [Placeholder: What action items do you need to complete?]`;
+💡 IMPORTANT DETAILS:
+Add any important details, examples, or definitions mentioned.
 
-          generatedContent = await generateText({
-            messages: [{ role: 'user', content: prompt }],
-          });
+✅ ACTION ITEMS:
+• Task 1
+• Task 2
+
+---
+
+Tip: You can edit this note anytime to add more details from your recording.`;
         }
 
         addExplanation(topicName, generatedContent);
@@ -406,7 +412,7 @@ REVIEW QUESTIONS:
         let fallbackContent = `Voice Recording Notes\n\nRecording Duration: ${recordingDuration}\nRecorded on: ${new Date().toLocaleString()}\n\n`;
         
         if (hasTranscription) {
-          fallbackContent += `TRANSCRIPTION:\n${transcription}\n\nThis voice recording has been saved with transcription.`;
+          fallbackContent += `TRANSCRIPTION:\n${finalTranscription}\n\nThis voice recording has been saved with transcription.`;
         } else {
           fallbackContent += `This voice recording has been saved. Transcription was not available on this platform.`;
         }
