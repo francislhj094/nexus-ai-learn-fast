@@ -15,6 +15,8 @@ import { Audio } from "expo-av";
 import { generateText } from "@rork-ai/toolkit-sdk";
 import { useExplanations } from "@/contexts/explanations";
 
+const STT_API_URL = "https://toolkit.rork.com/stt/transcribe/";
+
 // Declare Web Speech Recognition API types
 declare global {
   interface Window {
@@ -159,6 +161,9 @@ export default function RecordAudioScreen() {
 
   const startRecording = useCallback(async () => {
     try {
+      // Clean up any existing recording first
+      await cleanupRecording();
+      
       console.log('Requesting audio permissions...');
       const permission = await Audio.requestPermissionsAsync();
       
@@ -177,13 +182,37 @@ export default function RecordAudioScreen() {
       });
 
       console.log('Creating recording...');
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        undefined,
-        100
-      );
       
-      recordingRef.current = newRecording;
+      // Use proper recording format for each platform
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync({
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.wav',
+          outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+          audioQuality: Audio.IOSAudioQuality.HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+        web: {
+          mimeType: 'audio/webm',
+          bitsPerSecond: 128000,
+        },
+      });
+      await recording.startAsync();
+      
+      recordingRef.current = recording;
       setIsRecording(true);
       console.log('Recording started successfully');
 
@@ -195,7 +224,7 @@ export default function RecordAudioScreen() {
       console.error("Failed to start recording:", err);
       setTimeout(() => router.back(), 100);
     }
-  }, [router, startSpeechRecognition]);
+  }, [router, startSpeechRecognition, cleanupRecording]);
 
   useEffect(() => {
     const initRecording = async () => {
@@ -208,7 +237,8 @@ export default function RecordAudioScreen() {
     return () => {
       cleanupRecording();
     };
-  }, [startRecording, cleanupRecording]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (isRecording && !isPaused) {
@@ -274,6 +304,43 @@ const formatTime = (seconds: number) => {
     }
   };
 
+  const transcribeAudioNative = async (uri: string): Promise<string> => {
+    try {
+      console.log('Transcribing audio from:', uri);
+      
+      const uriParts = uri.split('.');
+      const fileType = uriParts[uriParts.length - 1];
+      
+      const formData = new FormData();
+      const audioFile = {
+        uri,
+        name: `recording.${fileType}`,
+        type: `audio/${fileType}`,
+      } as any;
+      
+      formData.append('audio', audioFile);
+      
+      console.log('Sending audio to STT API...');
+      const response = await fetch(STT_API_URL, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('STT API error:', errorText);
+        throw new Error(`STT API error: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('STT result:', result);
+      return result.text || '';
+    } catch (error) {
+      console.error('Failed to transcribe audio:', error);
+      return '';
+    }
+  };
+
   const handleStop = async () => {
     try {
       if (!recordingRef.current) {
@@ -311,12 +378,24 @@ const formatTime = (seconds: number) => {
       await new Promise(resolve => setTimeout(resolve, 300));
 
       const recordingDuration = formatTime(recordingTime);
-      const finalTranscription = transcription.trim();
+      
+      // For native platforms, use STT API to transcribe
+      let finalTranscription = transcription.trim();
+      
+      if (Platform.OS !== 'web' && uri) {
+        console.log('Using STT API for native transcription...');
+        const nativeTranscription = await transcribeAudioNative(uri);
+        if (nativeTranscription) {
+          finalTranscription = nativeTranscription;
+        }
+      }
+      
       const hasTranscription = finalTranscription.length > 5;
 
       console.log('Transcription available:', hasTranscription);
       console.log('Transcription length:', finalTranscription.length);
       console.log('Transcription preview:', finalTranscription.substring(0, 100));
+      console.log('Full transcription:', finalTranscription);
 
       let topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
       let generatedContent = '';
