@@ -18,6 +18,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useExplanations } from "@/contexts/explanations";
 import { generateText } from "@rork-ai/toolkit-sdk";
 import { useMutation } from "@tanstack/react-query";
+import { Image } from "expo-image";
+
+const RACCOON_MASCOT = "https://r2-pub.rork.com/generated-images/97b402cd-3c09-435e-803e-c6c62955985a.png";
 
 export default function StartLearningScreen() {
   const router = useRouter();
@@ -109,15 +112,15 @@ export default function StartLearningScreen() {
         >
           <View style={styles.topSection}>
             <View style={styles.mascotContainer}>
-              <View style={styles.purpleRing}>
-                <View style={styles.innerRing}>
-                  <Text style={styles.raccoonEmoji}>🦝</Text>
+              <View style={styles.purpleBlobOuter}>
+                <View style={styles.purpleBlobInner}>
+                  <Image
+                    source={RACCOON_MASCOT}
+                    style={styles.mascotImage}
+                    contentFit="contain"
+                  />
                 </View>
               </View>
-              <View style={[styles.sparkle, styles.sparkle1]} />
-              <View style={[styles.sparkle, styles.sparkle2]} />
-              <View style={[styles.sparkle, styles.sparkle3]} />
-              <View style={[styles.sparkle, styles.sparkle4]} />
             </View>
 
             <Text style={styles.title}>
@@ -224,61 +227,28 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     position: "relative" as const,
   },
-  purpleRing: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+  purpleBlobOuter: {
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "#E0D4FC",
+    justifyContent: "center",
+    alignItems: "center",
+    transform: [{ scaleX: 1.05 }, { rotate: "-5deg" }],
+  },
+  purpleBlobInner: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
     backgroundColor: "#C4B5FD",
     justifyContent: "center",
     alignItems: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.gradientPurpleStart,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.3,
-        shadowRadius: 20,
-      },
-      android: {
-        elevation: 10,
-      },
-      web: {
-        boxShadow: "0 0 40px rgba(139, 92, 246, 0.3)",
-      },
-    }),
+    transform: [{ rotate: "5deg" }],
+    overflow: "hidden",
   },
-  innerRing: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "#A78BFA",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  raccoonEmoji: {
-    fontSize: 80,
-  },
-  sparkle: {
-    position: "absolute" as const,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#E9D5FF",
-  },
-  sparkle1: {
-    top: 20,
-    left: 60,
-  },
-  sparkle2: {
-    top: 40,
-    right: 50,
-  },
-  sparkle3: {
-    bottom: 30,
-    left: 40,
-  },
-  sparkle4: {
-    bottom: 50,
-    right: 60,
+  mascotImage: {
+    width: 150,
+    height: 150,
   },
   title: {
     fontSize: 28,
