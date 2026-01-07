@@ -133,7 +133,7 @@ Format your response naturally as if you're a friendly teacher explaining what's
             <ArrowLeft size={24} color={Colors.darkBrown} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {params.topic || "Explanation"}
+            {currentExplanation?.topic || params.topic || "Explanation"}
           </Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
