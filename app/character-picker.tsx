@@ -76,12 +76,13 @@ export default function CharacterPickerScreen() {
 
   const handleSelectCharacter = (character: Character) => {
     router.push({
-      pathname: "/note-generating",
+      pathname: "/learning-session",
       params: {
         topic,
         parentTopic,
         characterAge: character.age.toString(),
         characterName: character.name,
+        characterImage: character.image,
         difficulty: character.difficulty,
       },
     });
