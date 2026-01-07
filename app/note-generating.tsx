@@ -47,6 +47,7 @@ export default function NoteGeneratingScreen() {
   const duration = typeof params.duration === 'string' ? params.duration : '00:00:00';
   const webTranscript = typeof params.webTranscript === 'string' ? params.webTranscript : '';
   const mimeType = typeof params.mimeType === 'string' ? params.mimeType : '';
+  const sourceType = typeof params.sourceType === 'string' ? params.sourceType : 'recording';
 
   const [steps, setSteps] = useState<Step[]>([
     {
@@ -350,8 +351,36 @@ Language: ${aiLanguage}`;
           topicName = topicMatch[1].trim();
         }
       } else {
-        topicName = `Voice Note - ${new Date().toLocaleDateString()}`;
-        generatedContent = `📝 Voice Recording Notes
+        topicName = sourceType === 'upload' 
+          ? `Audio Note - ${new Date().toLocaleDateString()}`
+          : `Voice Note - ${new Date().toLocaleDateString()}`;
+        generatedContent = sourceType === 'upload' 
+          ? `📝 Audio File Notes
+
+File Name: ${fileName}
+Processed on: ${new Date().toLocaleString()}
+
+---
+
+✏️ WHAT I LEARNED:
+Add your notes about what was covered in this audio.
+
+📌 KEY POINTS:
+• Point 1
+• Point 2
+• Point 3
+
+💡 IMPORTANT DETAILS:
+Add any important details, examples, or definitions mentioned.
+
+✅ ACTION ITEMS:
+• Task 1
+• Task 2
+
+---
+
+Tip: You can edit this note anytime to add more details from the audio.`
+          : `📝 Voice Recording Notes
 
 Recording Duration: ${duration}
 Recorded on: ${new Date().toLocaleString()}

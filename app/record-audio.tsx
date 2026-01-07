@@ -445,6 +445,7 @@ const formatTime = (seconds: number) => {
           language: 'Auto detect',
           duration: recordingDuration,
           webTranscript: webTranscript,
+          sourceType: 'recording',
         },
       });
       
