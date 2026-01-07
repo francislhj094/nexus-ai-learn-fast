@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ export default function UploadAudioScreen() {
     size: number;
     mimeType?: string;
   } | null>(null);
+  const webFileRef = useRef<File | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState('Auto detect');
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
 
@@ -46,6 +47,15 @@ export default function UploadAudioScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
+        
+        // On web, store the actual File object for later use
+        if (Platform.OS === 'web' && (file as any).file) {
+          webFileRef.current = (file as any).file as File;
+          console.log('Stored web File object:', webFileRef.current.name, webFileRef.current.type);
+        } else {
+          webFileRef.current = null;
+        }
+        
         setSelectedFile({
           name: file.name,
           uri: file.uri,
@@ -60,10 +70,27 @@ export default function UploadAudioScreen() {
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
+    webFileRef.current = null;
   };
 
-  const handleGenerateTopic = () => {
+  const handleGenerateTopic = async () => {
     if (!selectedFile) return;
+
+    // On web, convert File to base64 for reliable transfer
+    let audioBase64 = '';
+    if (Platform.OS === 'web' && webFileRef.current) {
+      try {
+        const reader = new FileReader();
+        audioBase64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(webFileRef.current!);
+        });
+        console.log('Converted file to base64, length:', audioBase64.length);
+      } catch (error) {
+        console.error('Error converting file to base64:', error);
+      }
+    }
 
     router.push({
       pathname: '/note-generating',
@@ -73,6 +100,7 @@ export default function UploadAudioScreen() {
         language: selectedLanguage,
         mimeType: selectedFile.mimeType || '',
         sourceType: 'upload',
+        audioBase64: audioBase64,
       },
     });
   };

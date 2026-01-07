@@ -48,6 +48,7 @@ export default function NoteGeneratingScreen() {
   const webTranscript = typeof params.webTranscript === 'string' ? params.webTranscript : '';
   const mimeType = typeof params.mimeType === 'string' ? params.mimeType : '';
   const sourceType = typeof params.sourceType === 'string' ? params.sourceType : 'recording';
+  const audioBase64 = typeof params.audioBase64 === 'string' ? params.audioBase64 : '';
 
   const [steps, setSteps] = useState<Step[]>([
     {
@@ -132,9 +133,10 @@ export default function NoteGeneratingScreen() {
     console.log('Audio URI:', audioUri);
     console.log('Platform:', Platform.OS);
     console.log('Web transcript available:', webTranscript.length > 0);
+    console.log('Audio base64 available:', audioBase64.length > 0);
     
-    if (!audioUri) {
-      console.log('No audio URI, using web transcript if available');
+    if (!audioUri && !audioBase64) {
+      console.log('No audio URI or base64, using web transcript if available');
       return webTranscript;
     }
     
@@ -142,36 +144,71 @@ export default function NoteGeneratingScreen() {
       const formData = new FormData();
       
       if (Platform.OS === 'web') {
-        console.log('Fetching blob from web URI...');
-        const response = await fetch(audioUri);
-        const blob = await response.blob();
-        console.log('Blob size:', blob.size, 'type:', blob.type);
-        
-        // Determine file extension and mime type from fileName or blob
+        let blob: Blob;
         let fileExtension = 'webm';
         let fileMimeType = 'audio/webm';
         
-        if (fileName && fileName.includes('.')) {
-          const parts = fileName.split('.');
-          fileExtension = parts[parts.length - 1].toLowerCase();
-          const mimeMap: Record<string, string> = {
-            'mp3': 'audio/mpeg',
-            'wav': 'audio/wav',
-            'm4a': 'audio/m4a',
-            'ogg': 'audio/ogg',
-            'flac': 'audio/flac',
-            'webm': 'audio/webm',
-            'mp4': 'audio/mp4',
-            'mpeg': 'audio/mpeg',
-            'mpga': 'audio/mpeg',
-          };
-          fileMimeType = mimeMap[fileExtension] || mimeType || blob.type || 'audio/webm';
-        } else if (mimeType) {
-          fileMimeType = mimeType;
-          fileExtension = mimeType.split('/')[1] || 'webm';
-        } else if (blob.type) {
-          fileMimeType = blob.type;
-          fileExtension = blob.type.split('/')[1] || 'webm';
+        // If we have base64 data (from upload), use it directly
+        if (audioBase64 && audioBase64.length > 0) {
+          console.log('Using base64 data for transcription');
+          
+          // Parse the data URL
+          const matches = audioBase64.match(/^data:([^;]+);base64,(.+)$/);
+          if (matches) {
+            fileMimeType = matches[1];
+            const base64Data = matches[2];
+            
+            // Convert base64 to blob
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            blob = new Blob([byteArray], { type: fileMimeType });
+            
+            // Get extension from mime type or filename
+            if (fileName && fileName.includes('.')) {
+              const parts = fileName.split('.');
+              fileExtension = parts[parts.length - 1].toLowerCase();
+            } else {
+              fileExtension = fileMimeType.split('/')[1] || 'webm';
+            }
+            
+            console.log('Created blob from base64, size:', blob.size, 'type:', fileMimeType);
+          } else {
+            throw new Error('Invalid base64 data format');
+          }
+        } else {
+          // Fallback to fetching from URI (for recordings)
+          console.log('Fetching blob from web URI...');
+          const response = await fetch(audioUri);
+          blob = await response.blob();
+          console.log('Blob size:', blob.size, 'type:', blob.type);
+          
+          // Determine file extension and mime type from fileName or blob
+          if (fileName && fileName.includes('.')) {
+            const parts = fileName.split('.');
+            fileExtension = parts[parts.length - 1].toLowerCase();
+            const mimeMap: Record<string, string> = {
+              'mp3': 'audio/mpeg',
+              'wav': 'audio/wav',
+              'm4a': 'audio/m4a',
+              'ogg': 'audio/ogg',
+              'flac': 'audio/flac',
+              'webm': 'audio/webm',
+              'mp4': 'audio/mp4',
+              'mpeg': 'audio/mpeg',
+              'mpga': 'audio/mpeg',
+            };
+            fileMimeType = mimeMap[fileExtension] || mimeType || blob.type || 'audio/webm';
+          } else if (mimeType) {
+            fileMimeType = mimeType;
+            fileExtension = mimeType.split('/')[1] || 'webm';
+          } else if (blob.type) {
+            fileMimeType = blob.type;
+            fileExtension = blob.type.split('/')[1] || 'webm';
+          }
         }
         
         console.log('Using file extension:', fileExtension, 'mime type:', fileMimeType);
