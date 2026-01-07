@@ -306,37 +306,74 @@ const formatTime = (seconds: number) => {
 
   const transcribeAudioNative = async (uri: string): Promise<string> => {
     try {
-      console.log('Transcribing audio from:', uri);
+      console.log('=== Starting Transcription ===' );
+      console.log('Audio URI:', uri);
+      console.log('Platform:', Platform.OS);
       
-      const uriParts = uri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
+      if (!uri) {
+        console.error('No URI provided for transcription');
+        return '';
+      }
       
       const formData = new FormData();
-      const audioFile = {
-        uri,
-        name: `recording.${fileType}`,
-        type: `audio/${fileType}`,
-      } as any;
       
-      formData.append('audio', audioFile);
+      if (Platform.OS === 'web') {
+        console.log('Fetching blob from web URI...');
+        try {
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          console.log('Blob size:', blob.size, 'type:', blob.type);
+          
+          const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+          formData.append('audio', audioFile);
+        } catch (blobError) {
+          console.error('Failed to fetch blob:', blobError);
+          return '';
+        }
+      } else {
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        console.log('File type detected:', fileType);
+        
+        const audioFile = {
+          uri: uri,
+          name: `recording.${fileType}`,
+          type: fileType === 'wav' ? 'audio/wav' : fileType === 'm4a' ? 'audio/m4a' : `audio/${fileType}`,
+        } as any;
+        
+        console.log('Audio file object:', JSON.stringify(audioFile));
+        formData.append('audio', audioFile);
+      }
       
-      console.log('Sending audio to STT API...');
-      const response = await fetch(STT_API_URL, {
+      console.log('Sending audio to STT API:', STT_API_URL);
+      const sttResponse = await fetch(STT_API_URL, {
         method: 'POST',
         body: formData,
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('STT API error:', errorText);
-        throw new Error(`STT API error: ${response.status}`);
+      console.log('STT API response status:', sttResponse.status);
+      
+      if (!sttResponse.ok) {
+        const errorText = await sttResponse.text();
+        console.error('STT API error response:', errorText);
+        throw new Error(`STT API error: ${sttResponse.status} - ${errorText}`);
       }
       
-      const result = await response.json();
-      console.log('STT result:', result);
-      return result.text || '';
+      const result = await sttResponse.json();
+      console.log('=== STT API Result ===' );
+      console.log('Full result:', JSON.stringify(result));
+      console.log('Transcribed text:', result.text);
+      console.log('Detected language:', result.language);
+      
+      if (result.text && result.text.trim().length > 0) {
+        return result.text.trim();
+      }
+      
+      console.log('No text in result, returning empty string');
+      return '';
     } catch (error) {
-      console.error('Failed to transcribe audio:', error);
+      console.error('=== Transcription Error ===' );
+      console.error('Error details:', error);
       return '';
     }
   };
@@ -382,20 +419,35 @@ const formatTime = (seconds: number) => {
       // For native platforms, use STT API to transcribe
       let finalTranscription = transcription.trim();
       
-      if (Platform.OS !== 'web' && uri) {
-        console.log('Using STT API for native transcription...');
-        const nativeTranscription = await transcribeAudioNative(uri);
-        if (nativeTranscription) {
-          finalTranscription = nativeTranscription;
+      console.log('=== Processing Transcription ===' );
+      console.log('Platform:', Platform.OS);
+      console.log('URI available:', !!uri);
+      console.log('Web transcription length:', transcription.length);
+      
+      if (uri) {
+        console.log('Attempting STT API transcription...');
+        try {
+          const nativeTranscription = await transcribeAudioNative(uri);
+          console.log('Native transcription result:', nativeTranscription);
+          console.log('Native transcription length:', nativeTranscription.length);
+          
+          if (nativeTranscription && nativeTranscription.length > 0) {
+            finalTranscription = nativeTranscription;
+            console.log('Using native transcription');
+          } else if (Platform.OS !== 'web') {
+            console.log('Native transcription empty, no web fallback available');
+          }
+        } catch (sttError) {
+          console.error('STT API failed:', sttError);
         }
       }
       
-      const hasTranscription = finalTranscription.length > 5;
+      const hasTranscription = finalTranscription.length > 2;
 
-      console.log('Transcription available:', hasTranscription);
-      console.log('Transcription length:', finalTranscription.length);
-      console.log('Transcription preview:', finalTranscription.substring(0, 100));
-      console.log('Full transcription:', finalTranscription);
+      console.log('=== Final Transcription Status ===' );
+      console.log('Has transcription:', hasTranscription);
+      console.log('Final transcription length:', finalTranscription.length);
+      console.log('Final transcription:', finalTranscription);
 
       let topicName = `Voice Recording ${new Date().toLocaleDateString()}`;
       let generatedContent = '';
