@@ -50,10 +50,25 @@ export default function NoteGeneratingScreen() {
   const webTranscript = typeof params.webTranscript === 'string' ? params.webTranscript : '';
   const mimeType = typeof params.mimeType === 'string' ? params.mimeType : '';
   const sourceType = typeof params.sourceType === 'string' ? params.sourceType : 'recording';
+  const useSessionStorage = typeof params.useSessionStorage === 'string' ? params.useSessionStorage === 'true' : false;
   const rawAudioBase64 = typeof params.audioBase64 === 'string' ? params.audioBase64 : '';
-  // Decode the URL-encoded base64 string
+  
+  // Get audio base64 from sessionStorage (web) or URL params
   let audioBase64 = '';
-  if (rawAudioBase64) {
+  if (Platform.OS === 'web' && useSessionStorage) {
+    try {
+      const storedBase64 = sessionStorage.getItem('uploadedAudioBase64');
+      if (storedBase64) {
+        audioBase64 = storedBase64;
+        console.log('Retrieved audio from sessionStorage, length:', audioBase64.length);
+        // Clean up after retrieval
+        sessionStorage.removeItem('uploadedAudioBase64');
+        sessionStorage.removeItem('uploadedAudioMimeType');
+      }
+    } catch (e) {
+      console.log('Failed to retrieve from sessionStorage:', e);
+    }
+  } else if (rawAudioBase64) {
     try {
       audioBase64 = decodeURIComponent(rawAudioBase64);
       console.log('Decoded audio base64 length:', audioBase64.length);

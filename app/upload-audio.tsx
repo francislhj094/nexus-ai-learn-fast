@@ -102,31 +102,63 @@ export default function UploadAudioScreen() {
     if (!selectedFile) return;
 
     setIsLoading(true);
+    setError(null);
     
     try {
+      console.log('Processing file:', selectedFile.name, 'URI:', selectedFile.uri);
+      
       let audioBase64 = '';
       
       if (Platform.OS === 'web') {
         try {
+          console.log('Fetching blob from URI...');
           const response = await fetch(selectedFile.uri);
-          const blob = await response.blob();
           
-          const reader = new FileReader();
-          audioBase64 = await new Promise<string>((resolve) => {
+          if (!response.ok) {
+            throw new Error(`Failed to fetch file: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          console.log('Blob fetched, size:', blob.size, 'type:', blob.type);
+          
+          if (blob.size === 0) {
+            throw new Error('File is empty');
+          }
+          
+          // Convert blob to base64
+          audioBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
             reader.onloadend = () => {
               const result = reader.result as string;
-              resolve(result);
+              if (result) {
+                resolve(result);
+              } else {
+                reject(new Error('Failed to read file'));
+              }
             };
+            reader.onerror = () => reject(new Error('FileReader error'));
             reader.readAsDataURL(blob);
           });
           
           console.log('Audio converted to base64, length:', audioBase64.length);
+          
+          // Store in sessionStorage for web to avoid URL size limits
+          if (audioBase64.length > 0) {
+            try {
+              sessionStorage.setItem('uploadedAudioBase64', audioBase64);
+              sessionStorage.setItem('uploadedAudioMimeType', selectedFile.mimeType);
+              console.log('Audio stored in sessionStorage');
+            } catch (storageError) {
+              console.warn('SessionStorage failed, will pass via URL:', storageError);
+            }
+          }
         } catch (e) {
-          console.error('Failed to convert audio to base64:', e);
+          console.error('Failed to process audio file:', e);
+          setError('Failed to read audio file. Please try a different file.');
+          setIsLoading(false);
+          return;
         }
       }
-
-      const encodedAudioBase64 = audioBase64 ? encodeURIComponent(audioBase64) : '';
 
       router.replace({
         pathname: '/note-generating',
@@ -138,7 +170,7 @@ export default function UploadAudioScreen() {
           webTranscript: '',
           sourceType: 'upload',
           mimeType: selectedFile.mimeType,
-          audioBase64: encodedAudioBase64,
+          useSessionStorage: Platform.OS === 'web' ? 'true' : 'false',
         },
       });
     } catch (err) {
