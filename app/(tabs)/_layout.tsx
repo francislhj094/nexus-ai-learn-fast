@@ -43,7 +43,7 @@ function FloatingActionButton() {
       icon: Video,
       iconColor: "#EF4444",
       bgColor: "#FECDD3",
-      route: "/create-notes" 
+      route: "/youtube-video" 
     },
     { 
       id: "pdf", 
