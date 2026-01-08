@@ -24,6 +24,7 @@ import { Audio } from 'expo-av';
 import Colors from '@/constants/colors';
 import { generateText } from '@rork-ai/toolkit-sdk';
 import { useExplanations } from '@/contexts/explanations';
+import { useAudioFile } from '@/contexts/audio-file';
 
 const STT_API_URL = 'https://toolkit.rork.com/stt/transcribe/';
 
@@ -42,12 +43,12 @@ export default function NoteGeneratingAudioScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { addExplanation } = useExplanations();
+  const { audioData, getAudioBlob, clearAudioFile } = useAudioFile();
   
   const audioUri = typeof params.audioUri === 'string' ? params.audioUri : '';
   const fileName = typeof params.fileName === 'string' ? params.fileName : 'Audio File';
   const language = typeof params.language === 'string' ? params.language : 'Auto detect';
   const mimeType = typeof params.mimeType === 'string' ? params.mimeType : '';
-  const audioBase64Param = typeof params.audioBase64 === 'string' ? params.audioBase64 : '';
   
   const [steps, setSteps] = useState<Step[]>([
     {
@@ -147,10 +148,13 @@ export default function NoteGeneratingAudioScreen() {
     console.log('File name:', fileName);
     console.log('MIME type:', mimeType);
     console.log('Platform:', Platform.OS);
-    console.log('Has base64 param:', audioBase64Param.length > 0);
+    console.log('Has audio data in context:', !!audioData);
     
-    if (!audioUri && !audioBase64Param) {
-      console.error('No audio URI or base64 provided');
+    const storedBlob = getAudioBlob();
+    console.log('Stored blob from context:', storedBlob ? `${storedBlob.size} bytes` : 'null');
+    
+    if (!audioUri && !storedBlob) {
+      console.error('No audio URI or blob provided');
       return '';
     }
     
@@ -160,43 +164,11 @@ export default function NoteGeneratingAudioScreen() {
       if (Platform.OS === 'web') {
         console.log('=== Web Platform: Processing audio ===');
         
-        let blob: Blob | null = null;
+        let blob: Blob | null = storedBlob;
         
-        // First try to use base64 data if available
-        if (audioBase64Param && audioBase64Param.length > 0) {
-          try {
-            console.log('Using base64 audio data...');
-            const decodedBase64 = decodeURIComponent(audioBase64Param);
-            console.log('Decoded base64 length:', decodedBase64.length);
-            
-            // Parse data URL format: data:audio/xxx;base64,XXXXX
-            const base64Match = decodedBase64.match(/^data:([^;]+);base64,(.+)$/);
-            if (base64Match) {
-              const detectedMimeType = base64Match[1];
-              const base64Data = base64Match[2];
-              console.log('Detected MIME type from base64:', detectedMimeType);
-              
-              // Convert base64 to blob
-              const byteCharacters = atob(base64Data);
-              const byteNumbers = new Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-              }
-              const byteArray = new Uint8Array(byteNumbers);
-              blob = new Blob([byteArray], { type: detectedMimeType });
-              console.log('Created blob from base64 - size:', blob.size, 'type:', blob.type);
-            } else {
-              console.log('Base64 data not in expected data URL format');
-            }
-          } catch (base64Error) {
-            console.error('Failed to process base64 data:', base64Error);
-          }
-        }
-        
-        // Fallback to fetching from URI if base64 didn't work
         if (!blob && audioUri) {
           try {
-            console.log('Falling back to fetching from URI...');
+            console.log('Fetching from URI as fallback...');
             const response = await fetch(audioUri);
             if (!response.ok) {
               throw new Error(`Failed to fetch audio: ${response.status}`);
@@ -212,6 +184,8 @@ export default function NoteGeneratingAudioScreen() {
           console.error('Audio blob is missing or too small:', blob?.size);
           throw new Error('Audio file is too small or empty');
         }
+        
+        console.log('Using blob - size:', blob.size, 'type:', blob.type);
         
         let fileExtension = 'mp3';
         let fileMimeType = mimeType || blob.type || 'audio/mpeg';
@@ -496,6 +470,7 @@ Tip: You can edit this note anytime to add more details from the audio.`;
       await new Promise(resolve => setTimeout(resolve, 500));
       
       addExplanation(topicName, generatedContent);
+      clearAudioFile();
       setIsComplete(true);
       
     } catch (error) {
@@ -513,6 +488,7 @@ An error occurred during processing. Your audio has been saved.`;
       
       updateStepStatus(3, 'completed', 100);
       addExplanation(fileName.replace(/\.[^/.]+$/, '') || 'Audio Note', fallbackContent);
+      clearAudioFile();
       setIsComplete(true);
     }
   };

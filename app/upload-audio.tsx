@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,18 @@ import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, FileAudio, ChevronDown, Sparkles } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import Colors from '@/constants/colors';
+import { useAudioFile } from '@/contexts/audio-file';
 
 export default function UploadAudioScreen() {
   const router = useRouter();
+  const { setAudioFile } = useAudioFile();
   const [selectedFile, setSelectedFile] = useState<{
     name: string;
     uri: string;
     size: number;
     mimeType?: string;
+    webFile?: File | null;
   } | null>(null);
-  const webFileRef = useRef<File | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState('Auto detect');
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
 
@@ -48,12 +50,10 @@ export default function UploadAudioScreen() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
         
-        // On web, store the actual File object for later use
+        let webFile: File | null = null;
         if (Platform.OS === 'web' && (file as any).file) {
-          webFileRef.current = (file as any).file as File;
-          console.log('Stored web File object:', webFileRef.current.name, webFileRef.current.type);
-        } else {
-          webFileRef.current = null;
+          webFile = (file as any).file as File;
+          console.log('Got web File object:', webFile.name, webFile.type, webFile.size);
         }
         
         setSelectedFile({
@@ -61,6 +61,7 @@ export default function UploadAudioScreen() {
           uri: file.uri,
           size: file.size || 0,
           mimeType: file.mimeType,
+          webFile,
         });
       }
     } catch (error) {
@@ -70,38 +71,18 @@ export default function UploadAudioScreen() {
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
-    webFileRef.current = null;
   };
 
   const handleGenerateTopic = async () => {
     if (!selectedFile) return;
 
-    // On web, convert File to base64 for reliable transfer
-    let audioBase64 = '';
-    if (Platform.OS === 'web' && webFileRef.current) {
-      try {
-        const reader = new FileReader();
-        audioBase64 = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(webFileRef.current!);
-        });
-        console.log('Converted file to base64, length:', audioBase64.length);
-      } catch (error) {
-        console.error('Error converting file to base64:', error);
-      }
-    }
-
-    // Encode base64 for URL safety on web
-    let encodedAudioBase64 = '';
-    if (audioBase64 && audioBase64.length > 0) {
-      try {
-        encodedAudioBase64 = encodeURIComponent(audioBase64);
-        console.log('Encoded audio base64 length:', encodedAudioBase64.length);
-      } catch (e) {
-        console.error('Failed to encode audio base64:', e);
-      }
-    }
+    console.log('Setting audio file in context...');
+    await setAudioFile({
+      uri: selectedFile.uri,
+      fileName: selectedFile.name,
+      mimeType: selectedFile.mimeType || '',
+      webFile: selectedFile.webFile,
+    });
 
     router.push({
       pathname: '/note-generating-audio',
@@ -110,7 +91,6 @@ export default function UploadAudioScreen() {
         fileName: selectedFile.name,
         language: selectedLanguage,
         mimeType: selectedFile.mimeType || '',
-        audioBase64: encodedAudioBase64,
       },
     });
   };
