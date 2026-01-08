@@ -473,6 +473,17 @@ const formatTime = (seconds: number) => {
         }
       }
 
+      // Encode base64 for URL safety
+      let encodedAudioBase64 = '';
+      if (audioBase64 && audioBase64.length > 0) {
+        try {
+          encodedAudioBase64 = encodeURIComponent(audioBase64);
+          console.log('Encoded audio base64 length:', encodedAudioBase64.length);
+        } catch (e) {
+          console.error('Failed to encode audio base64:', e);
+        }
+      }
+
       router.replace({
         pathname: '/note-generating',
         params: {
@@ -482,7 +493,7 @@ const formatTime = (seconds: number) => {
           duration: recordingDuration,
           webTranscript: webTranscript,
           sourceType: 'recording',
-          audioBase64: audioBase64,
+          audioBase64: encodedAudioBase64,
         },
       });
       

@@ -48,7 +48,18 @@ export default function NoteGeneratingScreen() {
   const webTranscript = typeof params.webTranscript === 'string' ? params.webTranscript : '';
   const mimeType = typeof params.mimeType === 'string' ? params.mimeType : '';
   const sourceType = typeof params.sourceType === 'string' ? params.sourceType : 'recording';
-  const audioBase64 = typeof params.audioBase64 === 'string' ? params.audioBase64 : '';
+  const rawAudioBase64 = typeof params.audioBase64 === 'string' ? params.audioBase64 : '';
+  // Decode the URL-encoded base64 string
+  let audioBase64 = '';
+  if (rawAudioBase64) {
+    try {
+      audioBase64 = decodeURIComponent(rawAudioBase64);
+      console.log('Decoded audio base64 length:', audioBase64.length);
+    } catch (e) {
+      console.log('Failed to decode, using raw:', e);
+      audioBase64 = rawAudioBase64;
+    }
+  }
 
   const [steps, setSteps] = useState<Step[]>([
     {
@@ -141,70 +152,80 @@ export default function NoteGeneratingScreen() {
     // For web recordings, ALWAYS prioritize audioBase64 from MediaRecorder for accurate transcription
     if (Platform.OS === 'web' && audioBase64 && audioBase64.length > 100) {
       console.log('=== Using audioBase64 for web transcription (STT API) ===');
+      console.log('Raw audioBase64 starts with:', audioBase64.substring(0, 50));
       try {
         const formData = new FormData();
         
-        // Parse the data URL
-        const matches = audioBase64.match(/^data:([^;]+);base64,(.+)$/);
-        if (!matches) {
-          console.error('Invalid base64 data format, trying alternative parsing');
-          // Try without the regex in case format is slightly different
+        // Parse the data URL - handle various formats
+        let fileMimeType = 'audio/webm';
+        let base64Data = '';
+        
+        // Check if it's a data URL format
+        if (audioBase64.startsWith('data:')) {
           const commaIndex = audioBase64.indexOf(',');
           if (commaIndex === -1) {
-            console.error('Cannot parse base64 data');
+            console.error('Cannot find comma in data URL');
             return '';
           }
+          
           const header = audioBase64.substring(0, commaIndex);
-          const base64Data = audioBase64.substring(commaIndex + 1);
-          const mimeMatch = header.match(/data:([^;]+)/);
-          const fileMimeType = mimeMatch ? mimeMatch[1] : 'audio/webm';
+          base64Data = audioBase64.substring(commaIndex + 1);
           
-          console.log('Alternative parsing - mime type:', fileMimeType);
-          console.log('Alternative parsing - base64 length:', base64Data.length);
-          
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          // Extract mime type from header like "data:audio/webm;codecs=opus;base64" or "data:audio/webm;base64"
+          const mimeMatch = header.match(/data:([^;,]+)/);
+          if (mimeMatch) {
+            fileMimeType = mimeMatch[1];
           }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: fileMimeType });
           
-          const audioFile = new File([blob], 'recording.webm', { type: fileMimeType });
-          formData.append('audio', audioFile);
-        } else {
-          const fileMimeType = matches[1];
-          const base64Data = matches[2];
-          
-          console.log('Parsed mime type:', fileMimeType);
+          console.log('Parsed header:', header);
+          console.log('Extracted mime type:', fileMimeType);
           console.log('Base64 data length:', base64Data.length);
-          
-          // Convert base64 to blob
-          const byteCharacters = atob(base64Data);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], { type: fileMimeType });
-          
-          console.log('Created blob from base64, size:', blob.size, 'type:', fileMimeType);
-          
-          // Determine file extension
-          let fileExtension = 'webm';
-          if (fileMimeType.includes('webm')) {
-            fileExtension = 'webm';
-          } else if (fileMimeType.includes('mp3') || fileMimeType.includes('mpeg')) {
-            fileExtension = 'mp3';
-          } else if (fileMimeType.includes('wav')) {
-            fileExtension = 'wav';
-          } else if (fileMimeType.includes('m4a') || fileMimeType.includes('mp4')) {
-            fileExtension = 'm4a';
-          }
-          
-          const audioFile = new File([blob], `recording.${fileExtension}`, { type: fileMimeType });
-          formData.append('audio', audioFile);
+        } else {
+          // Assume it's raw base64
+          base64Data = audioBase64;
+          console.log('Using raw base64 data, length:', base64Data.length);
         }
+        
+        if (!base64Data || base64Data.length < 100) {
+          console.error('Base64 data too short or empty');
+          return '';
+        }
+        
+        // Convert base64 to blob
+        let byteArray: number[];
+        try {
+          const byteCharacters = atob(base64Data);
+          byteArray = [];
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteArray.push(byteCharacters.charCodeAt(i));
+          }
+        } catch (atobError) {
+          console.error('Failed to decode base64:', atobError);
+          return '';
+        }
+        
+        const blob = new Blob([new Uint8Array(byteArray).buffer], { type: fileMimeType });
+        console.log('Created blob from base64, size:', blob.size, 'type:', fileMimeType);
+        
+        if (blob.size < 100) {
+          console.error('Blob too small, likely corrupted data');
+          return '';
+        }
+        
+        // Determine file extension
+        let fileExtension = 'webm';
+        if (fileMimeType.includes('webm')) {
+          fileExtension = 'webm';
+        } else if (fileMimeType.includes('mp3') || fileMimeType.includes('mpeg')) {
+          fileExtension = 'mp3';
+        } else if (fileMimeType.includes('wav')) {
+          fileExtension = 'wav';
+        } else if (fileMimeType.includes('m4a') || fileMimeType.includes('mp4')) {
+          fileExtension = 'm4a';
+        }
+        
+        const audioFile = new File([blob], `recording.${fileExtension}`, { type: fileMimeType });
+        formData.append('audio', audioFile);
         
         console.log('Sending audio to STT API:', STT_API_URL);
         console.log('FormData ready to send');
