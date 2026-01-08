@@ -93,14 +93,12 @@ export default function UploadAudioScreen() {
     }
 
     router.push({
-      pathname: '/note-generating',
+      pathname: '/note-generating-audio',
       params: {
         audioUri: selectedFile.uri,
         fileName: selectedFile.name,
         language: selectedLanguage,
         mimeType: selectedFile.mimeType || '',
-        sourceType: 'upload',
-        audioBase64: audioBase64,
       },
     });
   };
