@@ -143,6 +143,33 @@ export default function NoteGeneratingAudioScreen() {
     }
   };
 
+  const getFileExtension = (name: string, uri: string): string => {
+    if (name && name.includes('.')) {
+      const parts = name.split('.');
+      return parts[parts.length - 1].toLowerCase();
+    }
+    if (uri && uri.includes('.')) {
+      const uriParts = uri.split('.');
+      return uriParts[uriParts.length - 1].split('?')[0].toLowerCase();
+    }
+    return 'm4a';
+  };
+
+  const getMimeType = (extension: string, fallback: string): string => {
+    const mimeMap: Record<string, string> = {
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'm4a': 'audio/m4a',
+      'ogg': 'audio/ogg',
+      'flac': 'audio/flac',
+      'webm': 'audio/webm',
+      'mp4': 'audio/mp4',
+      'mpeg': 'audio/mpeg',
+      'mpga': 'audio/mpeg',
+    };
+    return mimeMap[extension] || fallback || 'audio/mpeg';
+  };
+
   const transcribeAudio = async (retryCount = 0): Promise<string> => {
     console.log('=== Starting Audio Transcription ===');
     console.log('Audio URI:', audioUri);
@@ -154,56 +181,61 @@ export default function NoteGeneratingAudioScreen() {
     
     try {
       const formData = new FormData();
+      const fileExtension = getFileExtension(fileName, audioUri);
+      const fileMimeType = getMimeType(fileExtension, mimeType);
       
       if (Platform.OS === 'web') {
         console.log('=== Web Platform: Processing audio ===');
         
+        let audioFile: File | null = null;
+        
+        // Try getting file from context first
         const storedFile = getAudioFile();
-        console.log('Stored file from context:', storedFile ? `${storedFile.name} - ${storedFile.size} bytes` : 'null');
+        if (storedFile && storedFile.size > 100) {
+          audioFile = storedFile;
+          console.log('Using stored file from context:', audioFile.name, audioFile.size);
+        }
         
-        let audioFile: File | null = storedFile;
+        // Try webFile from audioData
+        if (!audioFile && audioData?.webFile && audioData.webFile.size > 100) {
+          audioFile = audioData.webFile;
+          console.log('Using webFile from audioData:', audioFile.name, audioFile.size);
+        }
         
-        if (!audioFile || audioFile.size < 100) {
-          if (audioData?.webFile) {
-            audioFile = audioData.webFile;
-            console.log('Using webFile from audioData:', audioFile.name, audioFile.size);
+        // Try creating from arrayBuffer
+        if (!audioFile && audioData?.arrayBuffer && audioData.arrayBuffer.byteLength > 100) {
+          try {
+            audioFile = new File(
+              [audioData.arrayBuffer], 
+              fileName || `audio.${fileExtension}`, 
+              { type: fileMimeType }
+            );
+            console.log('Created File from arrayBuffer:', audioFile.name, audioFile.size);
+          } catch (e) {
+            console.error('Failed to create File from arrayBuffer:', e);
           }
         }
         
-        if (!audioFile || audioFile.size < 100) {
-          if (audioUri) {
-            try {
-              console.log('Fetching from URI as fallback...');
-              const response = await fetch(audioUri);
-              if (response.ok) {
-                const blob = await response.blob();
-                console.log('Fetched blob from URI - size:', blob.size, 'type:', blob.type);
-                
-                let fileExtension = 'mp3';
-                if (fileName && fileName.includes('.')) {
-                  const parts = fileName.split('.');
-                  fileExtension = parts[parts.length - 1].toLowerCase();
-                }
-                
-                const mimeMap: Record<string, string> = {
-                  'mp3': 'audio/mpeg',
-                  'wav': 'audio/wav',
-                  'm4a': 'audio/m4a',
-                  'ogg': 'audio/ogg',
-                  'flac': 'audio/flac',
-                  'webm': 'audio/webm',
-                  'mp4': 'audio/mp4',
-                };
-                const fileMimeType = mimeMap[fileExtension] || blob.type || 'audio/mpeg';
-                
-                audioFile = new File([blob], fileName || `audio.${fileExtension}`, { type: fileMimeType });
+        // Last resort: try fetching from URI
+        if (!audioFile && audioUri) {
+          try {
+            console.log('Fetching from URI as fallback:', audioUri);
+            const response = await fetch(audioUri);
+            if (response.ok) {
+              const blob = await response.blob();
+              console.log('Fetched blob - size:', blob.size, 'type:', blob.type);
+              
+              if (blob.size > 100) {
+                audioFile = new File(
+                  [blob], 
+                  fileName || `audio.${fileExtension}`, 
+                  { type: fileMimeType }
+                );
                 console.log('Created File from URI fetch:', audioFile.name, audioFile.size);
-              } else {
-                console.error('Failed to fetch audio:', response.status);
               }
-            } catch (fetchError) {
-              console.error('Failed to fetch audio from URI:', fetchError);
             }
+          } catch (fetchError) {
+            console.error('Failed to fetch audio from URI:', fetchError);
           }
         }
         
@@ -213,7 +245,7 @@ export default function NoteGeneratingAudioScreen() {
         }
         
         console.log('Final audio file - name:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
-        formData.append('audio', audioFile);
+        formData.append('audio', audioFile, audioFile.name);
         
       } else {
         console.log('=== Native Platform: Using URI directly ===');
@@ -222,26 +254,6 @@ export default function NoteGeneratingAudioScreen() {
           console.error('No audio URI provided for native platform');
           throw new Error('No audio file provided');
         }
-        
-        let fileExtension = 'm4a';
-        if (fileName && fileName.includes('.')) {
-          const parts = fileName.split('.');
-          fileExtension = parts[parts.length - 1].toLowerCase();
-        } else if (audioUri.includes('.')) {
-          const uriParts = audioUri.split('.');
-          fileExtension = uriParts[uriParts.length - 1].split('?')[0].toLowerCase();
-        }
-        
-        const mimeMap: Record<string, string> = {
-          'mp3': 'audio/mpeg',
-          'wav': 'audio/wav',
-          'm4a': 'audio/m4a',
-          'ogg': 'audio/ogg',
-          'flac': 'audio/flac',
-          'webm': 'audio/webm',
-          'mp4': 'audio/mp4',
-        };
-        const fileMimeType = mimeMap[fileExtension] || mimeType || 'audio/mpeg';
         
         console.log('Using extension:', fileExtension, 'mime:', fileMimeType);
         
@@ -303,7 +315,7 @@ export default function NoteGeneratingAudioScreen() {
       
       if (retryCount < MAX_RETRIES && error instanceof TypeError) {
         console.log(`Network error, retrying (attempt ${retryCount + 2})...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
         return transcribeAudio(retryCount + 1);
       }
       
