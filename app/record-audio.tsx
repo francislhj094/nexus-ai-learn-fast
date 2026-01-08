@@ -13,8 +13,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 
-const STT_API_URL = 'https://toolkit.rork.com/stt/transcribe/';
-
 // Declare Web Speech Recognition API types
 declare global {
   interface Window {
@@ -386,54 +384,41 @@ const formatTime = (seconds: number) => {
       console.log('Web transcript from Speech Recognition:', webTranscript);
 
       // Stop MediaRecorder and get final audio
+      let audioBase64 = '';
       if (Platform.OS === 'web' && mediaRecorderRef.current) {
         try {
-          if (mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.stop();
-          }
-          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-        } catch {
-          console.log('MediaRecorder stop error');
-        }
-      }
-
-      // On web, also try to transcribe using the STT API for better accuracy
-      if (Platform.OS === 'web' && audioChunksRef.current.length > 0) {
-        try {
-          console.log('=== Attempting STT API transcription on web ===');
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          console.log('Audio blob size:', audioBlob.size);
-          
-          if (audioBlob.size > 0) {
-            const formData = new FormData();
-            const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
-            formData.append('audio', audioFile);
-            
-            console.log('Calling STT API at:', STT_API_URL);
-            const sttResponse = await fetch(STT_API_URL, {
-              method: 'POST',
-              body: formData,
-            });
-            
-            console.log('STT Response status:', sttResponse.status);
-            
-            if (sttResponse.ok) {
-              const result = await sttResponse.json();
-              console.log('=== STT API Result (web) ===');
-              console.log('Transcribed text:', result.text);
-              
-              if (result.text && result.text.trim().length > 0) {
-                webTranscript = result.text.trim();
-                console.log('Using STT API transcription:', webTranscript);
-              }
+          // Wait for final data
+          await new Promise<void>((resolve) => {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+              mediaRecorderRef.current.onstop = () => resolve();
+              mediaRecorderRef.current.stop();
             } else {
-              const errorText = await sttResponse.text();
-              console.log('STT API error response:', errorText);
+              resolve();
+            }
+          });
+          
+          mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
+          
+          // Convert audio chunks to base64 for reliable transfer
+          if (audioChunksRef.current.length > 0) {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            console.log('Audio blob created, size:', audioBlob.size);
+            
+            if (audioBlob.size > 0) {
+              // Convert blob to base64
+              const reader = new FileReader();
+              audioBase64 = await new Promise<string>((resolve) => {
+                reader.onloadend = () => {
+                  const result = reader.result as string;
+                  resolve(result);
+                };
+                reader.readAsDataURL(audioBlob);
+              });
+              console.log('Audio converted to base64, length:', audioBase64.length);
             }
           }
-        } catch (sttError) {
-          console.log('=== Transcription Error ===', sttError);
-          // Continue with Speech Recognition fallback if available
+        } catch (e) {
+          console.log('MediaRecorder stop error:', e);
         }
       }
 
@@ -446,6 +431,7 @@ const formatTime = (seconds: number) => {
           duration: recordingDuration,
           webTranscript: webTranscript,
           sourceType: 'recording',
+          audioBase64: audioBase64,
         },
       });
       
