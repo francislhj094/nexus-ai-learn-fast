@@ -189,14 +189,12 @@ export default function NoteGeneratingAudioScreen() {
         
         let audioFile: File | null = null;
         
-        // Try getting file from context first (uses base64 storage)
         const storedFile = getAudioFile();
         if (storedFile && storedFile.size > 100) {
           audioFile = storedFile;
-          console.log('Using stored file from context:', audioFile.name, audioFile.size);
+          console.log('Using stored file from context:', audioFile.name, audioFile.size, audioFile.type);
         }
         
-        // Fallback: try fetching from URI (may not work if blob URL expired)
         if (!audioFile && audioUri) {
           try {
             console.log('Fetching from URI as fallback:', audioUri);
@@ -225,7 +223,7 @@ export default function NoteGeneratingAudioScreen() {
         }
         
         console.log('Final audio file - name:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
-        formData.append('audio', audioFile, audioFile.name);
+        formData.append('audio', audioFile);
         
       } else {
         console.log('=== Native Platform: Using URI directly ===');
@@ -250,13 +248,26 @@ export default function NoteGeneratingAudioScreen() {
       console.log('Sending to STT API:', STT_API_URL);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      const timeoutId = setTimeout(() => controller.abort(), 180000);
       
-      const sttResponse = await fetch(STT_API_URL, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
+      let sttResponse: Response;
+      try {
+        sttResponse = await fetch(STT_API_URL, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        console.error('Fetch error:', fetchErr);
+        
+        if (retryCount < MAX_RETRIES) {
+          console.log(`Network error, retrying (attempt ${retryCount + 2})...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
+          return transcribeAudio(retryCount + 1);
+        }
+        throw new Error('Network error: Unable to connect to transcription service. Please check your internet connection.');
+      }
       
       clearTimeout(timeoutId);
       
@@ -272,7 +283,7 @@ export default function NoteGeneratingAudioScreen() {
           return transcribeAudio(retryCount + 1);
         }
         
-        throw new Error(`STT API error: ${sttResponse.status} - ${errorText}`);
+        throw new Error(`Transcription service error: ${sttResponse.status}`);
       }
       
       const result = await sttResponse.json();
@@ -291,12 +302,6 @@ export default function NoteGeneratingAudioScreen() {
       
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('Transcription request timed out. Please try a shorter audio file.');
-      }
-      
-      if (retryCount < MAX_RETRIES && error instanceof TypeError) {
-        console.log(`Network error, retrying (attempt ${retryCount + 2})...`);
-        await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
-        return transcribeAudio(retryCount + 1);
       }
       
       throw error;
