@@ -27,6 +27,7 @@ import { useExplanations } from '@/contexts/explanations';
 import { useAudioFile } from '@/contexts/audio-file';
 
 const STT_API_URL = 'https://toolkit.rork.com/stt/transcribe/';
+const MAX_RETRIES = 2;
 
 type StepStatus = 'pending' | 'in-progress' | 'completed' | 'error';
 
@@ -43,7 +44,7 @@ export default function NoteGeneratingAudioScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { addExplanation } = useExplanations();
-  const { audioData, getAudioBlob, clearAudioFile } = useAudioFile();
+  const { audioData, getAudioFile, clearAudioFile } = useAudioFile();
   
   const audioUri = typeof params.audioUri === 'string' ? params.audioUri : '';
   const fileName = typeof params.fileName === 'string' ? params.fileName : 'Audio File';
@@ -142,21 +143,14 @@ export default function NoteGeneratingAudioScreen() {
     }
   };
 
-  const transcribeAudio = async (): Promise<string> => {
+  const transcribeAudio = async (retryCount = 0): Promise<string> => {
     console.log('=== Starting Audio Transcription ===');
     console.log('Audio URI:', audioUri);
     console.log('File name:', fileName);
     console.log('MIME type:', mimeType);
     console.log('Platform:', Platform.OS);
     console.log('Has audio data in context:', !!audioData);
-    
-    const storedBlob = getAudioBlob();
-    console.log('Stored blob from context:', storedBlob ? `${storedBlob.size} bytes` : 'null');
-    
-    if (!audioUri && !storedBlob) {
-      console.error('No audio URI or blob provided');
-      return '';
-    }
+    console.log('Retry count:', retryCount);
     
     try {
       const formData = new FormData();
@@ -164,17 +158,46 @@ export default function NoteGeneratingAudioScreen() {
       if (Platform.OS === 'web') {
         console.log('=== Web Platform: Processing audio ===');
         
-        let blob: Blob | null = storedBlob;
+        const storedFile = getAudioFile();
+        console.log('Stored file from context:', storedFile ? `${storedFile.name} - ${storedFile.size} bytes` : 'null');
         
-        // Try multiple methods to get the blob
-        if (!blob || blob.size < 100) {
+        let audioFile: File | null = storedFile;
+        
+        if (!audioFile || audioFile.size < 100) {
+          if (audioData?.webFile) {
+            audioFile = audioData.webFile;
+            console.log('Using webFile from audioData:', audioFile.name, audioFile.size);
+          }
+        }
+        
+        if (!audioFile || audioFile.size < 100) {
           if (audioUri) {
             try {
               console.log('Fetching from URI as fallback...');
               const response = await fetch(audioUri);
               if (response.ok) {
-                blob = await response.blob();
+                const blob = await response.blob();
                 console.log('Fetched blob from URI - size:', blob.size, 'type:', blob.type);
+                
+                let fileExtension = 'mp3';
+                if (fileName && fileName.includes('.')) {
+                  const parts = fileName.split('.');
+                  fileExtension = parts[parts.length - 1].toLowerCase();
+                }
+                
+                const mimeMap: Record<string, string> = {
+                  'mp3': 'audio/mpeg',
+                  'wav': 'audio/wav',
+                  'm4a': 'audio/m4a',
+                  'ogg': 'audio/ogg',
+                  'flac': 'audio/flac',
+                  'webm': 'audio/webm',
+                  'mp4': 'audio/mp4',
+                };
+                const fileMimeType = mimeMap[fileExtension] || blob.type || 'audio/mpeg';
+                
+                audioFile = new File([blob], fileName || `audio.${fileExtension}`, { type: fileMimeType });
+                console.log('Created File from URI fetch:', audioFile.name, audioFile.size);
               } else {
                 console.error('Failed to fetch audio:', response.status);
               }
@@ -184,61 +207,21 @@ export default function NoteGeneratingAudioScreen() {
           }
         }
         
-        // Check if we have webFile in audioData
-        if ((!blob || blob.size < 100) && audioData?.webFile) {
-          blob = audioData.webFile;
-          console.log('Using webFile from audioData:', blob.size, blob.type);
-        }
-        
-        if (!blob || blob.size < 100) {
-          console.error('Audio blob is missing or too small:', blob?.size);
+        if (!audioFile || audioFile.size < 100) {
+          console.error('Audio file is missing or too small:', audioFile?.size);
           throw new Error('Audio file is too small or empty. Please try uploading a different audio file.');
         }
         
-        console.log('Using blob - size:', blob.size, 'type:', blob.type);
-        
-        let fileExtension = 'mp3';
-        let fileMimeType = mimeType || blob.type || 'audio/mpeg';
-        
-        if (fileName && fileName.includes('.')) {
-          const parts = fileName.split('.');
-          fileExtension = parts[parts.length - 1].toLowerCase();
-        } else if (fileMimeType && fileMimeType !== 'application/octet-stream') {
-          const typeMap: Record<string, string> = {
-            'audio/mpeg': 'mp3',
-            'audio/mp3': 'mp3',
-            'audio/wav': 'wav',
-            'audio/wave': 'wav',
-            'audio/x-wav': 'wav',
-            'audio/m4a': 'm4a',
-            'audio/mp4': 'm4a',
-            'audio/x-m4a': 'm4a',
-            'audio/ogg': 'ogg',
-            'audio/flac': 'flac',
-            'audio/webm': 'webm',
-          };
-          fileExtension = typeMap[fileMimeType] || 'mp3';
-        }
-        
-        const mimeMap: Record<string, string> = {
-          'mp3': 'audio/mpeg',
-          'wav': 'audio/wav',
-          'm4a': 'audio/m4a',
-          'ogg': 'audio/ogg',
-          'flac': 'audio/flac',
-          'webm': 'audio/webm',
-          'mp4': 'audio/mp4',
-        };
-        fileMimeType = mimeMap[fileExtension] || fileMimeType;
-        
-        console.log('Using extension:', fileExtension, 'mime:', fileMimeType);
-        
-        const audioFile = new File([blob], `audio.${fileExtension}`, { type: fileMimeType });
+        console.log('Final audio file - name:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
         formData.append('audio', audioFile);
         
-        console.log('Created File object - name:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
       } else {
         console.log('=== Native Platform: Using URI directly ===');
+        
+        if (!audioUri) {
+          console.error('No audio URI provided for native platform');
+          throw new Error('No audio file provided');
+        }
         
         let fileExtension = 'm4a';
         if (fileName && fileName.includes('.')) {
@@ -262,20 +245,20 @@ export default function NoteGeneratingAudioScreen() {
         
         console.log('Using extension:', fileExtension, 'mime:', fileMimeType);
         
-        const audioFile = {
+        const audioFileObj = {
           uri: audioUri,
-          name: `audio.${fileExtension}`,
+          name: fileName || `audio.${fileExtension}`,
           type: fileMimeType,
         } as any;
         
-        formData.append('audio', audioFile);
+        formData.append('audio', audioFileObj);
         console.log('Created audio file object for native');
       }
       
       console.log('Sending to STT API:', STT_API_URL);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
       
       const sttResponse = await fetch(STT_API_URL, {
         method: 'POST',
@@ -290,6 +273,13 @@ export default function NoteGeneratingAudioScreen() {
       if (!sttResponse.ok) {
         const errorText = await sttResponse.text();
         console.error('STT API error:', sttResponse.status, errorText);
+        
+        if (retryCount < MAX_RETRIES && (sttResponse.status >= 500 || sttResponse.status === 0)) {
+          console.log(`Retrying transcription (attempt ${retryCount + 2})...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+          return transcribeAudio(retryCount + 1);
+        }
+        
         throw new Error(`STT API error: ${sttResponse.status} - ${errorText}`);
       }
       
@@ -306,9 +296,17 @@ export default function NoteGeneratingAudioScreen() {
       return '';
     } catch (error) {
       console.error('=== Transcription Error ===', error);
+      
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('Transcription request timed out. Please try a shorter audio file.');
       }
+      
+      if (retryCount < MAX_RETRIES && error instanceof TypeError) {
+        console.log(`Network error, retrying (attempt ${retryCount + 2})...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return transcribeAudio(retryCount + 1);
+      }
+      
       throw error;
     }
   };
