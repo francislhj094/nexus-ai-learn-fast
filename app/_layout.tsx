@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthContext, useAuth } from "@/contexts/auth";
 import { ExplanationsContext } from "@/contexts/explanations";
 import { SubscriptionContext } from "@/contexts/subscription";
-import { AudioFileProvider } from "@/contexts/audio-file";
+
 import { trpc, trpcClient } from "@/lib/trpc";
 
 SplashScreen.preventAutoHideAsync();
@@ -46,7 +46,7 @@ function RootLayoutNav() {
       <Stack.Screen name="privacy-policy" options={{ headerShown: false }} />
       <Stack.Screen name="terms-of-service" options={{ headerShown: false }} />
       <Stack.Screen name="record-audio" options={{ headerShown: false, presentation: "fullScreenModal" }} />
-      <Stack.Screen name="upload-audio" options={{ headerShown: false }} />
+      
       <Stack.Screen name="note-generating" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="generated-topic" options={{ headerShown: false }} />
       <Stack.Screen name="capture-text-image" options={{ headerShown: false }} />
@@ -68,9 +68,7 @@ export default function RootLayout() {
           <AuthContext>
             <SubscriptionContext>
               <ExplanationsContext>
-                <AudioFileProvider>
-                  <RootLayoutNav />
-                </AudioFileProvider>
+                <RootLayoutNav />
               </ExplanationsContext>
             </SubscriptionContext>
           </AuthContext>
