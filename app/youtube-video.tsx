@@ -51,36 +51,68 @@ export default function YouTubeVideoScreen() {
     }
   };
 
-  const fetchTranscript = async (id: string): Promise<string> => {
-    console.log('Fetching transcript for video:', id);
+  const fetchVideoInfo = async (id: string): Promise<{ title: string; description: string; channel: string; tags: string }> => {
+    console.log('Fetching video info for:', id);
     
+    // Try noembed API first (most reliable)
     try {
-      const response = await fetch(`https://yt.lemnoslife.com/noKey/videos?part=snippet&id=${id}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Video data:', JSON.stringify(data, null, 2));
-        
-        if (data.items && data.items.length > 0) {
-          const snippet = data.items[0].snippet;
-          const title = snippet?.title || 'Unknown Title';
-          const description = snippet?.description || '';
-          const channelTitle = snippet?.channelTitle || '';
-          const tags = snippet?.tags?.join(', ') || '';
-          
-          setVideoInfo({
-            title: title,
-            thumbnail: `https://img.youtube.com/vi/${id}/maxresdefault.jpg`,
-          });
-          
-          return `Video Title: ${title}\n\nChannel: ${channelTitle}\n\nDescription: ${description}\n\nTags: ${tags}`;
+      const noembedResponse = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${id}`);
+      if (noembedResponse.ok) {
+        const data = await noembedResponse.json();
+        console.log('Noembed data:', JSON.stringify(data, null, 2));
+        if (data.title && !data.error) {
+          return {
+            title: data.title,
+            description: '',
+            channel: data.author_name || '',
+            tags: '',
+          };
         }
       }
     } catch (err) {
-      console.log('Error fetching video info:', err);
+      console.log('Noembed API error:', err);
     }
-    
-    return `YouTube Video ID: ${id}\n\nPlease provide study notes based on this YouTube video. Since I cannot directly access the video content, please create general study material based on the video information available.`;
+
+    // Try oembed API as fallback
+    try {
+      const oembedResponse = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`);
+      if (oembedResponse.ok) {
+        const data = await oembedResponse.json();
+        console.log('Oembed data:', JSON.stringify(data, null, 2));
+        if (data.title) {
+          return {
+            title: data.title,
+            description: '',
+            channel: data.author_name || '',
+            tags: '',
+          };
+        }
+      }
+    } catch (err) {
+      console.log('Oembed API error:', err);
+    }
+
+    // Try lemnoslife API as another fallback
+    try {
+      const response = await fetch(`https://yt.lemnoslife.com/noKey/videos?part=snippet&id=${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Lemnoslife data:', JSON.stringify(data, null, 2));
+        if (data.items && data.items.length > 0) {
+          const snippet = data.items[0].snippet;
+          return {
+            title: snippet?.title || '',
+            description: snippet?.description || '',
+            channel: snippet?.channelTitle || '',
+            tags: snippet?.tags?.join(', ') || '',
+          };
+        }
+      }
+    } catch (err) {
+      console.log('Lemnoslife API error:', err);
+    }
+
+    return { title: '', description: '', channel: '', tags: '' };
   };
 
   const handleGenerate = async () => {
@@ -95,55 +127,81 @@ export default function YouTubeVideoScreen() {
     try {
       console.log('Starting YouTube video processing...');
       
-      const videoContent = await fetchTranscript(videoId);
-      console.log('Video content length:', videoContent.length);
+      const fetchedInfo = await fetchVideoInfo(videoId);
+      console.log('Fetched video info:', JSON.stringify(fetchedInfo, null, 2));
+      
+      // Update video info with fetched title
+      if (fetchedInfo.title) {
+        setVideoInfo({
+          title: fetchedInfo.title,
+          thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        });
+      }
 
-      const prompt = `You are an AI learning assistant. A user wants to learn from this YouTube video:
+      const actualTitle = fetchedInfo.title || videoInfo?.title || 'Unknown Video';
+      const videoContent = [
+        `Video Title: ${actualTitle}`,
+        fetchedInfo.channel ? `Channel: ${fetchedInfo.channel}` : '',
+        fetchedInfo.description ? `Description: ${fetchedInfo.description}` : '',
+        fetchedInfo.tags ? `Tags: ${fetchedInfo.tags}` : '',
+      ].filter(Boolean).join('\n\n');
+      
+      console.log('Video content for AI:', videoContent);
 
+      const prompt = `You are an AI learning assistant. Create study notes SPECIFICALLY about the following YouTube video.
+
+IMPORTANT: Your notes MUST be about the exact topic mentioned in the video title. Do NOT generate generic or unrelated content.
+
+Video Information:
 ${videoContent}
 
-Based on this video information, create comprehensive study notes.
+Based on this video's title "${actualTitle}", create comprehensive study notes about this SPECIFIC topic.
 
 Please provide:
-1. Main Topic: Identify the main topic of the video
-2. Summary: Write a 2-3 sentence summary of what the video covers
-3. Key Concepts: Extract 4-6 key concepts or main points likely discussed
-4. Detailed Explanation: Provide a clear, organized explanation of the content
-5. Review Questions: Create 2-3 review questions to test understanding
+1. Main Topic: The exact topic from the video title
+2. Summary: What this video likely covers based on its title
+3. Key Concepts: 4-6 key concepts related to this specific topic
+4. Detailed Explanation: Educational content about this exact subject
+5. Review Questions: 2-3 questions to test understanding of this topic
 
 Format your response as follows:
 MAIN TOPIC:
-[Identified main topic]
+[The topic from the video title]
 
 SUMMARY:
-[Your 2-3 sentence summary]
+[Summary about this specific topic]
 
 KEY CONCEPTS:
-- [Concept 1]
-- [Concept 2]
-- [Concept 3]
-- [Concept 4]
-- [Concept 5]
+- [Concept 1 related to this topic]
+- [Concept 2 related to this topic]
+- [Concept 3 related to this topic]
+- [Concept 4 related to this topic]
+- [Concept 5 related to this topic]
 
 DETAILED EXPLANATION:
-[Your organized explanation with proper structure]
+[Educational explanation about this specific subject]
 
 REVIEW QUESTIONS:
-1. [Question 1]
-2. [Question 2]
-3. [Question 3]
+1. [Question about this topic]
+2. [Question about this topic]
+3. [Question about this topic]
 
-Make the notes educational and helpful for studying.`;
+Remember: Focus ONLY on the topic "${actualTitle}". Do not deviate to other subjects.`;
 
       console.log('Generating notes with AI...');
       const generatedContent = await generateText({
         messages: [{ role: 'user', content: prompt }],
       });
 
-      let topicName = videoInfo?.title || 'YouTube Video Notes';
+      const fetchedTitle = fetchedInfo.title || videoInfo?.title;
+      let topicName = fetchedTitle || 'YouTube Video Notes';
       const topicMatch = generatedContent.match(/MAIN TOPIC:\s*([^\n]+)/);
       if (topicMatch && topicMatch[1].trim()) {
         topicName = topicMatch[1].trim();
+      }
+      // Prefer the actual video title if available
+      if (fetchedTitle && topicName === 'YouTube Video Notes') {
+        topicName = fetchedTitle;
       }
 
       console.log('Adding explanation:', topicName);
