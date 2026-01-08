@@ -53,23 +53,43 @@ export default function UploadAudioScreen() {
         let webFile: File | null = null;
         
         if (Platform.OS === 'web') {
+          console.log('=== Web: Processing picked file ===');
+          console.log('File asset:', file.name, file.uri, file.mimeType);
+          
           // Try to get the File object from different possible locations
           if ((file as any).file instanceof File) {
             webFile = (file as any).file as File;
             console.log('Got web File from .file property:', webFile.name, webFile.type, webFile.size);
           } else if (file.uri) {
-            // For web, try to fetch the blob from the URI and create a File
+            // For web, immediately fetch the blob and create a File while URI is still valid
             try {
-              console.log('Fetching blob from URI:', file.uri);
+              console.log('Fetching blob from URI immediately:', file.uri);
               const response = await fetch(file.uri);
+              if (!response.ok) {
+                throw new Error(`Fetch failed: ${response.status}`);
+              }
               const blob = await response.blob();
-              webFile = new File([blob], file.name, { 
-                type: file.mimeType || blob.type || 'audio/mpeg' 
-              });
-              console.log('Created File from URI fetch:', webFile.name, webFile.type, webFile.size);
+              console.log('Got blob:', blob.size, blob.type);
+              
+              // Create File with proper type
+              const fileType = file.mimeType || blob.type || 'audio/mpeg';
+              webFile = new File([blob], file.name, { type: fileType });
+              console.log('Created File from blob:', webFile.name, webFile.type, webFile.size);
             } catch (fetchError) {
               console.error('Failed to fetch blob from URI:', fetchError);
             }
+          }
+          
+          // Store file in context immediately while it's valid
+          if (webFile && webFile.size > 100) {
+            console.log('Storing file in context immediately...');
+            await setAudioFile({
+              uri: file.uri,
+              fileName: file.name,
+              mimeType: file.mimeType || webFile.type || 'audio/mpeg',
+              webFile: webFile,
+            });
+            console.log('File stored in context');
           }
         }
         
@@ -98,43 +118,34 @@ export default function UploadAudioScreen() {
     console.log('Has webFile:', !!selectedFile.webFile);
     console.log('Platform:', Platform.OS);
     
-    let webFile = selectedFile.webFile;
-    
-    if (Platform.OS === 'web') {
-      if (!webFile && selectedFile.uri) {
-        try {
-          console.log('Creating File from URI...');
-          const response = await fetch(selectedFile.uri);
-          const blob = await response.blob();
-          webFile = new File([blob], selectedFile.name, { 
-            type: selectedFile.mimeType || blob.type || 'audio/mpeg' 
-          });
-          console.log('Created File:', webFile.name, webFile.size, webFile.type);
-        } catch (e) {
-          console.error('Failed to create File from URI:', e);
-        }
+    // On web, file should already be in context from handleUploadPress
+    // For native, we set it now
+    if (Platform.OS !== 'web') {
+      console.log('Native platform: Setting audio file in context...');
+      try {
+        await setAudioFile({
+          uri: selectedFile.uri,
+          fileName: selectedFile.name,
+          mimeType: selectedFile.mimeType || 'audio/mpeg',
+          webFile: null,
+        });
+        console.log('Audio file set in context successfully');
+      } catch (e) {
+        console.error('Failed to set audio file in context:', e);
       }
-      
-      if (!webFile || webFile.size < 100) {
-        console.error('No valid audio file available');
-        return;
+    } else {
+      // On web, ensure file is still in context, re-store if needed
+      const existingFile = selectedFile.webFile;
+      if (existingFile && existingFile.size > 100) {
+        console.log('Web: Re-confirming file in context');
+        await setAudioFile({
+          uri: selectedFile.uri,
+          fileName: selectedFile.name,
+          mimeType: selectedFile.mimeType || existingFile.type || 'audio/mpeg',
+          webFile: existingFile,
+        });
       }
     }
-
-    console.log('Setting audio file in context...');
-    try {
-      await setAudioFile({
-        uri: selectedFile.uri,
-        fileName: selectedFile.name,
-        mimeType: selectedFile.mimeType || webFile?.type || 'audio/mpeg',
-        webFile: webFile,
-      });
-      console.log('Audio file set in context successfully');
-    } catch (e) {
-      console.error('Failed to set audio file in context:', e);
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 200));
 
     router.push({
       pathname: '/note-generating-audio',
@@ -142,7 +153,7 @@ export default function UploadAudioScreen() {
         audioUri: selectedFile.uri,
         fileName: selectedFile.name,
         language: selectedLanguage,
-        mimeType: selectedFile.mimeType || webFile?.type || 'audio/mpeg',
+        mimeType: selectedFile.mimeType || selectedFile.webFile?.type || 'audio/mpeg',
       },
     });
   };

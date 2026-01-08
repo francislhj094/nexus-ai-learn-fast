@@ -189,37 +189,17 @@ export default function NoteGeneratingAudioScreen() {
         
         let audioFile: File | null = null;
         
+        // Get file from context - this should be the primary source on web
         const storedFile = getAudioFile();
+        console.log('Stored file from context:', storedFile ? `${storedFile.name} (${storedFile.size} bytes)` : 'null');
+        
         if (storedFile && storedFile.size > 100) {
           audioFile = storedFile;
           console.log('Using stored file from context:', audioFile.name, audioFile.size, audioFile.type);
-        }
-        
-        if (!audioFile && audioUri) {
-          try {
-            console.log('Fetching from URI as fallback:', audioUri);
-            const response = await fetch(audioUri);
-            if (response.ok) {
-              const blob = await response.blob();
-              console.log('Fetched blob - size:', blob.size, 'type:', blob.type);
-              
-              if (blob.size > 100) {
-                audioFile = new File(
-                  [blob], 
-                  fileName || `audio.${fileExtension}`, 
-                  { type: fileMimeType }
-                );
-                console.log('Created File from URI fetch:', audioFile.name, audioFile.size);
-              }
-            }
-          } catch (fetchError) {
-            console.error('Failed to fetch audio from URI:', fetchError);
-          }
-        }
-        
-        if (!audioFile || audioFile.size < 100) {
-          console.error('Audio file is missing or too small:', audioFile?.size);
-          throw new Error('Audio file is too small or empty. Please try uploading a different audio file.');
+        } else {
+          console.error('No valid file in context!');
+          console.log('Context audioData:', audioData);
+          throw new Error('Audio file not found. Please go back and re-upload your audio file.');
         }
         
         console.log('Final audio file - name:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
