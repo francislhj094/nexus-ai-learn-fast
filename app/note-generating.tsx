@@ -29,6 +29,36 @@ const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT = 180000;
 const RETRY_DELAYS = [2000, 4000, 6000];
 
+const base64ToBlob = (base64: string, mimeType: string): Blob => {
+  try {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  } catch (error) {
+    console.error('base64ToBlob error:', error);
+    throw error;
+  }
+};
+
+const getMimeTypeFromExtension = (ext: string): string => {
+  const mimeMap: Record<string, string> = {
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'm4a': 'audio/mp4',
+    'mp4': 'audio/mp4',
+    'ogg': 'audio/ogg',
+    'flac': 'audio/flac',
+    'webm': 'audio/webm',
+    'mpeg': 'audio/mpeg',
+    'mpga': 'audio/mpeg',
+  };
+  return mimeMap[ext.toLowerCase()] || 'audio/webm';
+};
+
 type StepStatus = 'pending' | 'in-progress' | 'completed' | 'error';
 
 interface Step {
@@ -166,6 +196,8 @@ export default function NoteGeneratingScreen() {
     console.log('Audio base64 length:', audioBase64.length);
     console.log('Source type:', sourceType);
     console.log('Retry count:', retryCount);
+    console.log('File name:', fileName);
+    console.log('Mime type param:', mimeType);
 
     const performFetch = async (formData: FormData): Promise<string | null> => {
       const controller = new AbortController();
@@ -206,22 +238,36 @@ export default function NoteGeneratingScreen() {
         }
       } catch (error: any) {
         clearTimeout(timeoutId);
-        console.error('Fetch error:', error?.message || error);
+        console.error('Fetch error during STT:', error?.message || error);
         throw error;
       }
     };
+
+    const getFileExtension = (name: string, type: string): string => {
+      if (name && name.includes('.')) {
+        const ext = name.split('.').pop()?.toLowerCase();
+        if (ext) return ext;
+      }
+      if (type) {
+        const typePart = type.split('/')[1];
+        if (typePart) {
+          if (typePart === 'mpeg') return 'mp3';
+          if (typePart === 'mp4') return 'm4a';
+          return typePart;
+        }
+      }
+      return 'webm';
+    };
     
-    // For web recordings, ALWAYS prioritize audioBase64 from MediaRecorder for accurate transcription
+    // For web platform with audioBase64 available
     if (Platform.OS === 'web' && audioBase64 && audioBase64.length > 100) {
       console.log('=== Using audioBase64 for web transcription (STT API) ===');
       try {
         const formData = new FormData();
         
-        // Parse the data URL - handle various formats
-        let fileMimeType = 'audio/webm';
+        let fileMimeType = mimeType || 'audio/webm';
         let base64Data = '';
         
-        // Check if it's a data URL format
         if (audioBase64.startsWith('data:')) {
           const commaIndex = audioBase64.indexOf(',');
           if (commaIndex === -1) {
@@ -237,7 +283,7 @@ export default function NoteGeneratingScreen() {
             fileMimeType = mimeMatch[1];
           }
           
-          console.log('Extracted mime type:', fileMimeType);
+          console.log('Extracted mime type from data URL:', fileMimeType);
           console.log('Base64 data length:', base64Data.length);
         } else {
           base64Data = audioBase64;
@@ -249,33 +295,13 @@ export default function NoteGeneratingScreen() {
           return webTranscript || '';
         }
         
-        // Convert base64 to blob using fetch API (more reliable)
         let blob: Blob;
         try {
-          const dataUrl = audioBase64.startsWith('data:') ? audioBase64 : `data:${fileMimeType};base64,${base64Data}`;
-          const fetchResponse = await fetch(dataUrl);
-          blob = await fetchResponse.blob();
-          console.log('Created blob from base64 via fetch, size:', blob.size, 'type:', blob.type);
-          
-          if (blob.type) {
-            fileMimeType = blob.type;
-          }
+          blob = base64ToBlob(base64Data, fileMimeType);
+          console.log('Created blob from base64, size:', blob.size, 'type:', blob.type);
         } catch (blobError) {
-          console.log('Fetch blob method failed, trying manual conversion:', blobError);
-          // Fallback to manual conversion
-          try {
-            const byteCharacters = atob(base64Data);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            blob = new Blob([byteArray.buffer], { type: fileMimeType });
-            console.log('Created blob manually, size:', blob.size);
-          } catch (atobError) {
-            console.error('Failed to decode base64:', atobError);
-            return webTranscript || '';
-          }
+          console.error('Failed to convert base64 to blob:', blobError);
+          return webTranscript || '';
         }
         
         if (blob.size < 100) {
@@ -283,16 +309,13 @@ export default function NoteGeneratingScreen() {
           return webTranscript || '';
         }
         
-        let fileExtension = 'webm';
-        if (fileMimeType.includes('webm')) fileExtension = 'webm';
-        else if (fileMimeType.includes('mp3') || fileMimeType.includes('mpeg')) fileExtension = 'mp3';
-        else if (fileMimeType.includes('wav')) fileExtension = 'wav';
-        else if (fileMimeType.includes('m4a') || fileMimeType.includes('mp4')) fileExtension = 'm4a';
-        else if (fileMimeType.includes('ogg')) fileExtension = 'ogg';
-        else if (fileMimeType.includes('flac')) fileExtension = 'flac';
+        const fileExtension = getFileExtension(fileName, fileMimeType);
+        const finalMimeType = getMimeTypeFromExtension(fileExtension);
         
-        const audioFile = new File([blob], `recording.${fileExtension}`, { type: fileMimeType });
-        console.log('Created File object:', audioFile.name, audioFile.size, audioFile.type);
+        console.log('Final file extension:', fileExtension, 'mime type:', finalMimeType);
+        
+        const audioFile = new File([blob], `recording.${fileExtension}`, { type: finalMimeType });
+        console.log('Created File object:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
         formData.append('audio', audioFile);
         
         const result = await performFetch(formData);
@@ -320,8 +343,8 @@ export default function NoteGeneratingScreen() {
           return transcribeAudio(retryCount + 1);
         }
         
-        console.log('Max retries reached or non-retryable error, continuing without transcription');
-        return '';
+        console.log('Max retries reached, continuing without transcription');
+        return webTranscript || '';
       }
     }
     
@@ -335,60 +358,45 @@ export default function NoteGeneratingScreen() {
       
       if (Platform.OS === 'web') {
         let blob: Blob;
-        let fileExtension = 'webm';
-        let fileMimeType = 'audio/webm';
         
-        console.log('Fetching blob from web URI...');
+        console.log('Fetching blob from web URI:', audioUri);
         try {
           const response = await fetch(audioUri);
           if (!response.ok) {
             throw new Error(`Failed to fetch audio: ${response.status}`);
           }
           blob = await response.blob();
-          console.log('Blob size:', blob.size, 'type:', blob.type);
+          console.log('Blob fetched, size:', blob.size, 'type:', blob.type);
         } catch (fetchError) {
           console.error('Failed to fetch from URI:', fetchError);
-          return webTranscript;
+          return webTranscript || '';
         }
         
-        if (fileName && fileName.includes('.')) {
-          const parts = fileName.split('.');
-          fileExtension = parts[parts.length - 1].toLowerCase();
-          const mimeMap: Record<string, string> = {
-            'mp3': 'audio/mpeg',
-            'wav': 'audio/wav',
-            'm4a': 'audio/m4a',
-            'ogg': 'audio/ogg',
-            'flac': 'audio/flac',
-            'webm': 'audio/webm',
-            'mp4': 'audio/mp4',
-            'mpeg': 'audio/mpeg',
-            'mpga': 'audio/mpeg',
-          };
-          fileMimeType = mimeMap[fileExtension] || mimeType || blob.type || 'audio/webm';
-        } else if (mimeType) {
-          fileMimeType = mimeType;
-          fileExtension = mimeType.split('/')[1] || 'webm';
-        } else if (blob.type) {
-          fileMimeType = blob.type;
-          fileExtension = blob.type.split('/')[1] || 'webm';
+        if (blob.size < 100) {
+          console.error('Fetched blob too small');
+          return webTranscript || '';
         }
+        
+        const fileExtension = getFileExtension(fileName, blob.type || mimeType);
+        const fileMimeType = getMimeTypeFromExtension(fileExtension);
         
         console.log('Using file extension:', fileExtension, 'mime type:', fileMimeType);
         
         const audioFile = new File([blob], `recording.${fileExtension}`, { type: fileMimeType });
+        console.log('Created File object:', audioFile.name, 'size:', audioFile.size, 'type:', audioFile.type);
         formData.append('audio', audioFile);
       } else {
         const uriParts = audioUri.split('.');
         const fileType = uriParts[uriParts.length - 1].split('?')[0];
-        console.log('File type detected:', fileType);
+        console.log('Mobile - File type detected:', fileType);
         
         const audioFile = {
           uri: audioUri,
           name: `recording.${fileType}`,
-          type: fileType === 'wav' ? 'audio/wav' : fileType === 'm4a' ? 'audio/m4a' : `audio/${fileType}`,
+          type: getMimeTypeFromExtension(fileType),
         } as any;
         
+        console.log('Mobile audio file:', audioFile);
         formData.append('audio', audioFile);
       }
       
@@ -418,8 +426,8 @@ export default function NoteGeneratingScreen() {
         return transcribeAudio(retryCount + 1);
       }
       
-      console.log('Max retries reached or non-retryable error, continuing without transcription');
-      return '';
+      console.log('Max retries reached, continuing without transcription');
+      return webTranscript || '';
     }
   };
 
