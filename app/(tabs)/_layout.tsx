@@ -52,7 +52,7 @@ function FloatingActionButton() {
       icon: FileText,
       iconColor: "#F97316",
       bgColor: "#FED7AA",
-      route: "/create-notes" 
+      route: "/upload-pdf" 
     },
     { 
       id: "custom-text", 
